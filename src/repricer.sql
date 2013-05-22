@@ -3,7 +3,7 @@
 -- Server version:               5.5.27 - MySQL Community Server (GPL)
 -- Server OS:                    Win32
 -- HeidiSQL version:             7.0.0.4053
--- Date/time:                    2013-04-23 18:58:00
+-- Date/time:                    2013-05-22 10:57:49
 -- --------------------------------------------------------
 
 /*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
@@ -62,9 +62,12 @@ CREATE TABLE IF NOT EXISTS `inventory_items` (
   `product_id` varchar(50) NOT NULL,
   `inventory_region` varchar(50) NOT NULL,
   `quantity` int(11) NOT NULL,
+  `old_quantity` int(11) DEFAULT NULL,
   `price` float NOT NULL,
+  `old_price` float DEFAULT NULL,
   `item_condition` int(10) NOT NULL,
   `lowest_amazon_price` float DEFAULT NULL,
+  `obi` bit(1) DEFAULT NULL,
   PRIMARY KEY (`id`),
   KEY `inventory_id_region_product` (`inventory_id`,`region_product`),
   KEY `sku` (`sku`),
@@ -79,6 +82,7 @@ CREATE TABLE IF NOT EXISTS `latest_inventory` (
   `id` int(10) NOT NULL AUTO_INCREMENT,
   `region` varchar(10) NOT NULL,
   `inventory_id` int(20) NOT NULL,
+  `total_items` int(10) DEFAULT NULL,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1 MAX_ROWS=1;
 
@@ -89,6 +93,7 @@ CREATE TABLE IF NOT EXISTS `latest_inventory` (
 CREATE TABLE IF NOT EXISTS `product_blacklist` (
   `region` varchar(10) NOT NULL,
   `product_id` varchar(50) NOT NULL,
+  `blacklist` int(1) NOT NULL DEFAULT '1',
   PRIMARY KEY (`region`,`product_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1;
 
@@ -98,7 +103,12 @@ CREATE TABLE IF NOT EXISTS `product_blacklist` (
 -- Dumping structure for table repricer.product_details
 CREATE TABLE IF NOT EXISTS `product_details` (
   `product_id` varchar(50) NOT NULL,
-  `weight` float NOT NULL,
+  `weight` float DEFAULT NULL,
+  `used_quantity` int(11) NOT NULL DEFAULT '-1',
+  `used_lowest_price` float NOT NULL DEFAULT '-1',
+  `new_quantity` int(11) NOT NULL DEFAULT '-1',
+  `new_lowest_price` float NOT NULL DEFAULT '-1',
+  `last_refreshed` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`product_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1;
 
@@ -108,12 +118,14 @@ CREATE TABLE IF NOT EXISTS `product_details` (
 -- Dumping structure for table repricer.repricer_configuration
 CREATE TABLE IF NOT EXISTS `repricer_configuration` (
   `region` varchar(4) NOT NULL,
-  `repricer_status` varchar(15) NOT NULL,
+  `repricer_status` varchar(15) DEFAULT NULL,
   `formula_id` int(10) NOT NULL,
+  `latest_reprice_id` int(10) NOT NULL DEFAULT '-1',
   `repricer_interval` int(10) NOT NULL DEFAULT '-1',
   `next_run` timestamp NULL DEFAULT NULL,
   `marketplace_id` varchar(50) NOT NULL,
-  `seller_id` varchar(50) NOT NULL
+  `seller_id` varchar(50) NOT NULL,
+  `cache_refresh_interval` int(11) NOT NULL DEFAULT '-1'
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1;
 
 -- Data exporting was unselected.
@@ -121,9 +133,13 @@ CREATE TABLE IF NOT EXISTS `repricer_configuration` (
 
 -- Dumping structure for table repricer.repricer_formula
 CREATE TABLE IF NOT EXISTS `repricer_formula` (
-  `formula_id` int(10) NOT NULL,
+  `formula_id` int(10) NOT NULL AUTO_INCREMENT,
   `quantity_limit` int(10) NOT NULL,
+  `obi_quantity_limit` int(10) NOT NULL,
   `formula` varchar(100) NOT NULL,
+  `obi_formula` varchar(100) NOT NULL,
+  `default_weight` double NOT NULL DEFAULT '-1',
+  `obi_default_weight` double NOT NULL DEFAULT '-1',
   `second_level_repricing` bit(1) NOT NULL,
   `lower_price_marigin` double DEFAULT NULL,
   `lower_limit` double DEFAULT NULL,
@@ -142,12 +158,12 @@ CREATE TABLE IF NOT EXISTS `repricer_reports` (
   `reprice_id` int(11) NOT NULL DEFAULT '0',
   `price` float NOT NULL,
   `quantity` int(11) NOT NULL,
-  `inventory_item_id` int(11) NOT NULL,
+  `inventory_item_id` int(11) unsigned NOT NULL,
   `formula_id` int(11) NOT NULL,
+  `audit_trail` varchar(300) NOT NULL,
   `updated_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  KEY `FK_repricer_reports_repricer_status` (`reprice_id`),
-  CONSTRAINT `FK_repricer_reports_repricer_status` FOREIGN KEY (`reprice_id`) REFERENCES `repricer_status` (`reprice_id`)
+  KEY `FK_repricer_reports_repricer_status` (`reprice_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1;
 
 -- Data exporting was unselected.
@@ -161,11 +177,32 @@ CREATE TABLE IF NOT EXISTS `repricer_status` (
   `total_scheduled` int(11) NOT NULL DEFAULT '0',
   `total_completed` int(11) NOT NULL DEFAULT '0',
   `total_repriced` int(11) NOT NULL DEFAULT '0',
+  `elapsed` int(11) NOT NULL DEFAULT '0',
+  `quantity_reset_to_zero` int(11) NOT NULL DEFAULT '0',
+  `price_up` int(11) NOT NULL DEFAULT '0',
+  `price_down` int(11) NOT NULL DEFAULT '0',
+  `no_price_change` int(11) NOT NULL DEFAULT '0',
+  `obi_quantity_reset_to_zero` int(11) NOT NULL DEFAULT '0',
+  `obi_price_up` int(11) NOT NULL DEFAULT '0',
+  `obi_price_down` int(11) NOT NULL DEFAULT '0',
+  `obi_no_price_change` int(11) NOT NULL DEFAULT '0',
+  `lowest_price` int(11) NOT NULL DEFAULT '0',
+  `last_repriced_id` int(11) NOT NULL DEFAULT '0',
+  `last_repriced` varchar(50) DEFAULT NULL,
   `reprice_rate` float NOT NULL DEFAULT '0',
   `start_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `end_time` timestamp NULL DEFAULT NULL,
   PRIMARY KEY (`reprice_id`),
   KEY `region` (`region`)
+) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+
+-- Data exporting was unselected.
+
+
+-- Dumping structure for table repricer.users
+CREATE TABLE IF NOT EXISTS `users` (
+  `Username` varchar(50) DEFAULT NULL,
+  `Password` varchar(50) DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1;
 
 -- Data exporting was unselected.
