@@ -39,6 +39,8 @@ public class CommandManager extends DBAccessor {
                 c = new PauseRepricerCommand(id, metadata, date);
             } else if ("CONTINUE_REPRICER".equals(command)) {
                 c = new ContinueRepricer(id, metadata, date);
+            } else if ("ADD_ASSOCIATION".equals(command)) {
+                c = new AddAssociationCommand(id, metadata, date);
             } else {
                 log.info("Unknown command [command=" + command + ", id=" + id + "], ignoring!");
             }

@@ -309,6 +309,7 @@ public class AmazonAccessor {
         SubmitFeedRequest request = new SubmitFeedRequest();
         request.setMerchant(sellerId);
         List<String> mkt = new ArrayList<String>();
+        mkt.add(marketplaceId);
         IdList list = new IdList(mkt);
         request.setMarketplaceIdList(list);
         request.setFeedType("_POST_FLAT_FILE_PRICEANDQUANTITYONLY_UPDATE_DATA_");

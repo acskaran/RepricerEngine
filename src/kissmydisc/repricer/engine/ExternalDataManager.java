@@ -50,6 +50,8 @@ public class ExternalDataManager {
 
     private Map<String, Float> lowestAmazonPriceMap = null;
 
+    private Map<String, String> associations = null;
+
     private boolean cachedWeight = false;
     private boolean cachedPriceQuantity = false;
 
@@ -109,13 +111,18 @@ public class ExternalDataManager {
         try {
             try {
                 ProductDAO dao = new ProductDAO();
-                Map<String, ProductDetails> productDetails = dao.getProductDetails(productIds);
+                associations = dao.getAssociation(region, productIds);
+                List<String> reqdProductIds = new ArrayList<String>();
+                for (String productId : productIds) {
+                    String id = getAssociatedProductId(productId);
+                    reqdProductIds.add(id);
+                }
+                Map<String, ProductDetails> productDetails = dao.getProductDetails(reqdProductIds);
                 skuNotFoundInDB.addAll(convertToRetrievableData(productDetails));
             } catch (DBException e) {
                 log.error("Unable to retrieve product details from DB", e);
             }
             if (skuNotFoundInDB != null && skuNotFoundInDB.size() > 0) {
-
                 final List<String> skuNotFoundInWeight = new ArrayList<String>();
                 for (String sku : skuNotFoundInDB) {
                     if (weightMap.containsKey(sku) == false) {
@@ -135,7 +142,9 @@ public class ExternalDataManager {
                                 weightMap.putAll(weights);
                                 for (String sku : weights.keySet()) {
                                     if (weights.containsKey(sku)) {
-                                        productIdWeights.put(skuProductIdMap.get(sku), weights.get(sku));
+                                        String productId = skuProductIdMap.get(sku);
+                                        productId = getAssociatedProductId(productId);
+                                        productIdWeights.put(productId, weights.get(sku));
                                     }
                                 }
                             }
@@ -236,21 +245,34 @@ public class ExternalDataManager {
         }
     }
 
+    private String getAssociatedProductId(String productId) {
+        if (associations != null && associations.containsKey(productId)) {
+            productId = associations.get(productId);
+        }
+        return productId;
+    }
+
     private void cachePriceAndQuantity(List<String> skus) {
         // Retrieve product details from Amazon JP.
         List<ProductDetails> productDetails = null;
         try {
+            List<String> reqdProductIds = new ArrayList<String>();
+            for (String productId : productIds) {
+                String id = getAssociatedProductId(productId);
+                reqdProductIds.add(id);
+            }
             Map<String, Map<String, Pair<Float, Integer>>> productPriceAndQuantity = jpAccessor
-                    .getProductDetailsByASIN(productIds, false);
+                    .getProductDetailsByASIN(reqdProductIds, false);
             productDetails = new ArrayList<ProductDetails>();
             for (String sku : skus) {
                 String productId = items.get(sku).getProductId();
+                productId = getAssociatedProductId(productId);
                 InventoryFeedItem item = items.get(sku);
                 if (productPriceAndQuantity.containsKey(productId)) {
                     Map<String, Pair<Float, Integer>> pqWithCondition = productPriceAndQuantity.get(productId);
                     Pair<Float, Integer> toReturn = null;
                     ProductDetails details = new ProductDetails();
-                    details.setProductId(item.getProductId());
+                    details.setProductId(productId);
                     Pair<Float, Integer> pq = pqWithCondition.get("New");
                     if (pq != null) {
                         if (pq.getFirst() != null) {
@@ -310,6 +332,7 @@ public class ExternalDataManager {
                 InventoryFeedItem item = entryItem.getValue();
                 String sku = entryItem.getKey();
                 String productId = item.getProductId();
+                productId = getAssociatedProductId(productId);
                 if (productDetails.containsKey(productId)) {
                     ProductDetails details = productDetails.get(productId);
                     if (details.getWeight() != null) {

@@ -4,7 +4,6 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.Statement;
 import java.sql.Timestamp;
 import java.util.Arrays;
 import java.util.Collections;
@@ -22,6 +21,68 @@ public class ProductDAO extends DBAccessor {
 
     public ProductDAO() {
         super();
+    }
+
+    /*
+     * CREATE TABLE `asin_associations` ( `region` VARCHAR(50) NOT NULL,
+     * `product_id` VARCHAR(50) NOT NULL, `jp_product_id` VARCHAR(50) NOT NULL,
+     * PRIMARY KEY (`region`, `product_id`) ) COLLATE='latin1_swedish_ci'
+     * ENGINE=InnoDB;
+     */
+    public void addAssociation(final String region, final String asinForRegion, final String targetJPAsin)
+            throws Exception {
+        String insertQuery = "insert into asin_associations (REGION, PRODUCT_ID, JP_PRODUCT_ID) values (?, ?, ?) on DUPLICATE KEY UPDATE JP_PRODUCT_ID = values(JP_PRODUCT_ID)";
+        PreparedStatement st = null;
+        Connection conn = null;
+        try {
+            conn = getConnection();
+            st = conn.prepareStatement(insertQuery);
+            st.setString(1, region);
+            st.setString(2, asinForRegion);
+            st.setString(3, targetJPAsin);
+            st.execute();
+        } catch (SQLException e) {
+            throw new DBException(e);
+        } finally {
+            releaseStatement(st);
+            releaseConnection();
+        }
+    }
+
+    public Map<String, String> getAssociation(final String region, List<String> productIds) throws DBException {
+        String selectQuery = "select * from asin_associations where REGION = ? and PRODUCT_ID in ( ? ";
+        if (productIds.size() > 1) {
+            for (int i = 0; i < productIds.size() - 1; i++) {
+                selectQuery += ", ? ";
+            }
+        }
+        selectQuery += " ) ";
+        PreparedStatement st = null;
+        Connection conn = null;
+        ResultSet rs = null;
+        try {
+            conn = getConnection();
+            st = conn.prepareStatement(selectQuery);
+            int index = 1;
+            st.setString(index++, region);
+            for (String productId : productIds) {
+                st.setString(index++, productId);
+            }
+            rs = st.executeQuery();
+            Map<String, String> associations = new HashMap<String, String>();
+            while (rs.next()) {
+                String productId = rs.getString("PRODUCT_ID");
+                String jpProductId = rs.getString("JP_PRODUCT_ID");
+                associations.put(productId, jpProductId);
+            }
+            return associations;
+        } catch (SQLException e) {
+            throw new DBException(e);
+        } finally {
+            releaseResultSet(rs);
+            releaseStatement(st);
+            releaseConnection();
+        }
     }
 
     public void setProductWeight(Map<String, Float> map) throws DBException {

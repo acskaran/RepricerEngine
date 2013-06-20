@@ -3,7 +3,7 @@
 -- Server version:               5.5.27 - MySQL Community Server (GPL)
 -- Server OS:                    Win32
 -- HeidiSQL version:             7.0.0.4053
--- Date/time:                    2013-05-22 10:57:49
+-- Date/time:                    2013-05-22 14:49:45
 -- --------------------------------------------------------
 
 /*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
@@ -13,6 +13,17 @@
 -- Dumping database structure for repricer
 CREATE DATABASE IF NOT EXISTS `repricer` /*!40100 DEFAULT CHARACTER SET latin1 */;
 USE `repricer`;
+
+
+-- Dumping structure for table repricer.asin_associations
+CREATE TABLE IF NOT EXISTS `asin_associations` (
+  `region` varchar(50) NOT NULL,
+  `product_id` varchar(50) NOT NULL,
+  `jp_product_id` varchar(50) NOT NULL,
+  PRIMARY KEY (`region`,`product_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+
+-- Data exporting was unselected.
 
 
 -- Dumping structure for table repricer.commands
@@ -163,7 +174,8 @@ CREATE TABLE IF NOT EXISTS `repricer_reports` (
   `audit_trail` varchar(300) NOT NULL,
   `updated_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  KEY `FK_repricer_reports_repricer_status` (`reprice_id`)
+  KEY `FK_repricer_reports_repricer_status` (`reprice_id`),
+  KEY `inventory_item_id` (`inventory_item_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1;
 
 -- Data exporting was unselected.

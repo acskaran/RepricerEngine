@@ -190,8 +190,9 @@ public class ProcessInventoryCommand extends Command {
                                 item.setCondition(Integer.parseInt(values[col]));
                             } else if ("item-note".equalsIgnoreCase(columnAttributeMap.get(col))) {
                                 String val = values[col];
-                                if (val.contains("OBI") || val.contains("Obi") || val.contains("obi")
-                                        || val.contains("OBi") || val.contains("oBi")) {
+                                val = val.toLowerCase();
+                                if (val.contains("with box") || val.contains("OBI") || val.contains("Obi")
+                                        || val.contains("obi") || val.contains("OBi") || val.contains("oBi")) {
                                     obi = true;
                                 }
                             }
@@ -233,8 +234,6 @@ public class ProcessInventoryCommand extends Command {
     }
 
     public static void main(String[] args) throws Exception {
-        File file = new File("F:\\Documents\\Sridhar\\Programming\\Elance\\Repricer\\test.txt");
-        FileInputStream fs = new FileInputStream(file);
         new ProcessInventoryCommand()
                 .processContents("F:\\Documents\\Sridhar\\Programming\\Elance\\Repricer\\test.txt");
     }

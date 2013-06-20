@@ -1,6 +1,5 @@
 package kissmydisc.repricer.command;
 
-import java.util.Arrays;
 import java.util.Date;
 
 import org.apache.commons.logging.Log;
