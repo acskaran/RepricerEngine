@@ -486,55 +486,30 @@ public class AmazonAccessor {
             } catch (Exception e) {
             }
         }
+
         GetLowestOfferListingsForASINResponse getLowestResponse = getLowestOfferings.getResponse();
 
         Map<String, Map<String, Pair<Float, Integer>>> lowestPriceMap = new HashMap<String, Map<String, Pair<Float, Integer>>>();
 
         if (getLowestResponse != null) {
-            List<GetLowestOfferListingsForASINResult> lowestResults = getLowestResponse
-                    .getGetLowestOfferListingsForASINResult();
 
-            for (GetLowestOfferListingsForASINResult result : lowestResults) {
-                if (result.isSetStatus()) {
-                    if (result.getStatus().equalsIgnoreCase("success")) {
-                        String asin = result.getASIN();
-                        if (result.isSetProduct()) {
-                            Product product = result.getProduct();
-                            LowestOfferListingList offerList = product.getLowestOfferListings();
-                            if (offerList.isSetLowestOfferListing()) {
-                                for (LowestOfferListingType offerType : offerList.getLowestOfferListing()) {
-                                    PriceType priceType = offerType.getPrice();
-                                    QualifiersType qualifiers = offerType.getQualifiers();
-                                    if (qualifiers != null) {
-                                        if (priceType != null) {
-                                            String condition = qualifiers.getItemCondition();
-                                            MoneyType moneyType = priceType.getListingPrice();
-                                            if (moneyType != null) {
-                                                if (condition != null) {
-                                                    Float price = moneyType.getAmount().floatValue();
-                                                    if (!lowestPriceMap.containsKey(asin)) {
-                                                        lowestPriceMap.put(asin,
-                                                                new HashMap<String, Pair<Float, Integer>>());
-                                                    }
-                                                    Map<String, Pair<Float, Integer>> priceQtyMap = lowestPriceMap
-                                                            .get(asin);
-                                                    if (!priceQtyMap.containsKey(condition)) {
-                                                        priceQtyMap.put(condition, new Pair<Float, Integer>(price, -1));
-                                                    } else {
-                                                        priceQtyMap.get(condition).setFirst(
-                                                                Math.min(priceQtyMap.get(condition).getFirst(), price));
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
+            Map<String, List<String>> leftOutAsins = parseGetLowestOfferListingsResponse(getLowestResponse,
+                    lowestPriceMap);
 
-                        }
-                    }
-                }
+            if (leftOutAsins != null && leftOutAsins.size() > 0) {
+                GetLowestOfferingsThread getLowestOfferingsCall = new GetLowestOfferingsThread(leftOutAsins,
+                        productService);
+                log.info("Calling GetLowestOfferings for LeftOutAsins: " + leftOutAsins + ", region: " + region);
+                getLowestOfferingsCall.run();
+                parseGetLowestOfferListingsResponse(getLowestOfferingsCall.getResponse(), lowestPriceMap);
             }
+
+            if (log.isDebugEnabled()) {
+                log.debug("LowestPrice obtained through getLowestOfferingsCall: " + lowestPriceMap);
+            }
+
+        } else {
+            log.warn("GetLowestOfferListings is null for " + productIds);
         }
 
         if (response != null) {
@@ -577,7 +552,6 @@ public class AmazonAccessor {
                                     }
                                 }
                                 NumberOfOfferListingsList offerListings = competitivePricing.getNumberOfOfferListings();
-                                offerListings.getOfferListingCount();
                                 Integer quantity = null;
                                 for (OfferListingCountType offerListing : offerListings.getOfferListingCount()) {
                                     String condition = offerListing.getCondition();
@@ -602,6 +576,86 @@ public class AmazonAccessor {
             }
         }
         return lowestPriceMap;
+    }
+
+    private Map<String, List<String>> parseGetLowestOfferListingsResponse(
+            GetLowestOfferListingsForASINResponse getLowestResponse,
+            Map<String, Map<String, Pair<Float, Integer>>> lowestPriceMap) {
+        List<GetLowestOfferListingsForASINResult> lowestResults = getLowestResponse
+                .getGetLowestOfferListingsForASINResult();
+        Map<String, List<String>> leftOutAsins = new HashMap<String, List<String>>();
+        for (GetLowestOfferListingsForASINResult result : lowestResults) {
+            if (result.isSetStatus()) {
+                if (result.getStatus().equalsIgnoreCase("success")) {
+                    String asin = result.getASIN();
+                    boolean usedItems = false;
+                    boolean newItems = false;
+                    boolean scannedAll = true;
+                    if (!lowestPriceMap.containsKey(asin)) {
+                        lowestPriceMap.put(asin, new HashMap<String, Pair<Float, Integer>>());
+                    }
+                    if (result.isSetAllOfferListingsConsidered()) {
+                        scannedAll = result.isAllOfferListingsConsidered();
+                    }
+                    if (result.isSetProduct()) {
+                        Product product = result.getProduct();
+                        LowestOfferListingList offerList = product.getLowestOfferListings();
+                        if (offerList.isSetLowestOfferListing()) {
+                            for (LowestOfferListingType offerType : offerList.getLowestOfferListing()) {
+                                PriceType priceType = offerType.getPrice();
+                                QualifiersType qualifiers = offerType.getQualifiers();
+                                if (qualifiers != null) {
+                                    if (priceType != null) {
+                                        String condition = qualifiers.getItemCondition();
+                                        MoneyType moneyType = priceType.getListingPrice();
+                                        if (moneyType != null) {
+                                            if (condition != null) {
+                                                Float price = moneyType.getAmount().floatValue();
+                                                if (!lowestPriceMap.containsKey(asin)) {
+                                                    lowestPriceMap.put(asin,
+                                                            new HashMap<String, Pair<Float, Integer>>());
+                                                }
+                                                Map<String, Pair<Float, Integer>> priceQtyMap = lowestPriceMap
+                                                        .get(asin);
+                                                if (condition.equals("Used")) {
+                                                    usedItems = true;
+                                                }
+                                                if (condition.equals("New")) {
+                                                    newItems = true;
+                                                }
+                                                if (!priceQtyMap.containsKey(condition)) {
+                                                    priceQtyMap.put(condition, new Pair<Float, Integer>(price, -1));
+                                                } else {
+                                                    priceQtyMap.get(condition).setFirst(
+                                                            Math.min(priceQtyMap.get(condition).getFirst(), price));
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if (!scannedAll) {
+                        if (!usedItems) {
+                            if (!leftOutAsins.containsKey("Used")) {
+                                leftOutAsins.put("Used", new ArrayList<String>());
+                            }
+                            leftOutAsins.get("Used").add(asin);
+                        }
+                        if (!newItems) {
+                            if (!leftOutAsins.containsKey("New")) {
+                                leftOutAsins.put("New", new ArrayList<String>());
+                            }
+                            leftOutAsins.get("New").add(asin);
+                        }
+                    }
+                }
+            }
+
+        }
+        return leftOutAsins;
+
     }
 
     public static synchronized void initialize() throws Exception {
@@ -788,11 +842,30 @@ public class AmazonAccessor {
 
         private List<String> products;
 
+        private Map<String, List<String>> productCondition;
+
         private MarketplaceWebServiceProducts productService;
+
+        private String condition = null;
 
         public GetLowestOfferingsThread(final List<String> products, final MarketplaceWebServiceProducts productService) {
             this.products = products;
             this.productService = productService;
+        }
+
+        public GetLowestOfferingsThread(final Map<String, List<String>> products,
+                final MarketplaceWebServiceProducts productService) {
+            this.productCondition = products;
+            this.productService = productService;
+            if (productCondition.containsKey("New")) {
+                condition = "New";
+                this.products = productCondition.get("New");
+            } else if (productCondition.containsKey("Used")) {
+                condition = "Used";
+                this.products = productCondition.get("Used");
+            } else {
+                this.products = new ArrayList<String>();
+            }
         }
 
         public void run() {
@@ -802,12 +875,14 @@ public class AmazonAccessor {
                 AmazonAccessMonitor getLowestOfferMonitor = GET_LOWEST_OFFER_MONITOR.get(region);
 
                 boolean shouldRetry = true;
+                int size = products == null ? productCondition.size() : products.size();
+
                 for (int retry = 0; shouldRetry && retry < MAX_RETRY; retry++) {
                     shouldRetry = false;
                     int tries = 0;
                     int waitTime = 0;
                     while (tries++ < MAX_TRIES) {
-                        waitTime = getLowestOfferMonitor.addRequest(products.size());
+                        waitTime = getLowestOfferMonitor.addRequest(size);
                         if (waitTime == 0) {
                             break;
                         } else {
@@ -829,6 +904,9 @@ public class AmazonAccessor {
                     getLowestOfferListings.setMarketplaceId(marketplaceId);
                     getLowestOfferListings.setSellerId(sellerId);
                     ASINListType asinList = new ASINListType(products);
+                    if (condition != null) {
+                        getLowestOfferListings.setItemCondition(condition);
+                    }
                     getLowestOfferListings.setASINList(asinList);
                     try {
                         response = productService.getLowestOfferListingsForASIN(getLowestOfferListings);

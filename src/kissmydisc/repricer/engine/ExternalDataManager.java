@@ -81,6 +81,7 @@ public class ExternalDataManager {
             ProductDAO pdao = new ProductDAO();
             try {
                 blackListMap = pdao.isBlackList(region, productIds);
+                blackListMap.putAll(pdao.isBlackList(region, skus));
             } catch (DBException e) {
                 log.error("Unable to get blacklist data from DB", e);
                 blackListMap = Collections.emptyMap();
@@ -89,6 +90,9 @@ public class ExternalDataManager {
         if (blackListMap != null) {
             if (blackListMap.containsKey(skuProductIdMap.get(sku))) {
                 return blackListMap.get(skuProductIdMap.get(sku));
+            }
+            if (blackListMap.containsKey(sku)) {
+                return blackListMap.get(sku);
             }
             return false;
         }
@@ -298,13 +302,18 @@ public class ExternalDataManager {
                         toReturn = pq;
                     }
                     if (toReturn != null) {
-                        if (toReturn.getSecond() != null && toReturn.getSecond() >= 0) {
-                            quantityMap.put(sku, toReturn.getSecond());
+                        if (toReturn.getSecond() != null) {
+                            if (toReturn.getSecond() >= 0) {
+                                quantityMap.put(sku, toReturn.getSecond());
+                            } else {
+                                quantityMap.put(sku, 0);
+                            }
                         }
                         if (toReturn.getFirst() != null) {
                             priceMap.put(sku, toReturn.getFirst());
                         }
                     } else {
+                        quantityMap.put(sku, 0);
                         log.warn("Matching product could not be found for " + item);
                     }
                     productDetails.add(details);

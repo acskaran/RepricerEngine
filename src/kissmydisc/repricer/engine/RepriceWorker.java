@@ -368,7 +368,7 @@ public class RepriceWorker implements Runnable {
                                     .getFormula().getInitialFormula());
                             Float lowestAmazonPrice = dataManager.getLowestAmazonPrice(item.getSku());
                             Float weight = dataManager.getWeight(item.getSku());
-                            if (weight == null || weight < 0F) {
+                            if (weight == null || weight <= 0F) {
                                 if (log.isDebugEnabled()) {
                                     log.debug("Weight is empty, using default weight for " + item.getSku());
                                 }
