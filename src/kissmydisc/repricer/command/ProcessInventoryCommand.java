@@ -110,7 +110,8 @@ public class ProcessInventoryCommand extends Command {
     private int findRequiredColumns(final String heading) {
         String[] columns = heading.split("\t");
         if (inventoryRegion.equals("US") || inventoryRegion.equals("UK") || inventoryRegion.equals("DE")
-                || inventoryRegion.equals("IT") || inventoryRegion.equals("CA") || inventoryRegion.equals("ES")) {
+                || inventoryRegion.equals("IT") || inventoryRegion.equals("CA") || inventoryRegion.equals("KMD")
+                || inventoryRegion.equals("ES")) {
             conversion.put("seller-sku", "sku");
             conversion.put("price", "price");
             conversion.put("quantity", "quantity");
@@ -194,6 +195,9 @@ public class ProcessInventoryCommand extends Command {
                                 if (val.contains("with box") || val.contains("OBI") || val.contains("Obi")
                                         || val.contains("obi") || val.contains("OBi") || val.contains("oBi")) {
                                     obi = true;
+                                }
+                                if (val.contains("no obi")) {
+                                    obi = false;
                                 }
                             }
                         }

@@ -16,6 +16,7 @@ import org.apache.commons.logging.LogFactory;
 import de.congrace.exp4j.Calculable;
 
 import kissmydisc.repricer.dao.AmazonAccessor;
+import kissmydisc.repricer.dao.CurrencyConversionDAO;
 import kissmydisc.repricer.dao.DBException;
 import kissmydisc.repricer.dao.InventoryItemDAO;
 import kissmydisc.repricer.dao.LatestInventoryDAO;
@@ -78,7 +79,11 @@ public class RepriceWorker implements Runnable {
 
     private AmazonAccessor jpAccessor = null;
 
+    private Map<String, AmazonAccessor> amazonAccessorMap = new HashMap<String, AmazonAccessor>();
+
     private RepricerStatusReportDAO rsrdao = new RepricerStatusReportDAO();
+
+    private Map<String, Float> exchangeRates;
 
     private boolean paused = false;
 
@@ -91,13 +96,16 @@ public class RepriceWorker implements Runnable {
             repriceConfigs = configDAO.getRepricers();
             log.info(repriceConfigs);
             RepricerConfiguration JPConfig = null;
+            exchangeRates = new CurrencyConversionDAO().getCurrencyConversion();
             for (RepricerConfiguration config : repriceConfigs) {
+                AmazonAccessor aAcc = new AmazonAccessor(config.getRegion(), config.getMarketplaceId(),
+                        config.getSellerId());
+                amazonAccessorMap.put(config.getRegion(), aAcc);
                 if ("JP".equals(config.getRegion())) {
-                    JPConfig = config;
-                    break;
+                    amazonAccessor = aAcc;
                 }
             }
-            amazonAccessor = new AmazonAccessor("JP", JPConfig.getMarketplaceId(), JPConfig.getSellerId());
+
             jpAccessor = amazonAccessor;
 
             log.info("Running repricer for " + region);
@@ -120,8 +128,12 @@ public class RepriceWorker implements Runnable {
                     }
                     amazonAccessor = new AmazonAccessor(currentConfig.getRegion(), currentConfig.getMarketplaceId(),
                             currentConfig.getSellerId());
-                    feedManager = new RepriceFeedManager(status.getRepriceId(), currentConfig.getRegion(),
-                            amazonAccessor);
+                    if ("KMD".equals(currentConfig.getRegion())) {
+                        feedManager = new KMDRepriceFeedManager(status.getRepriceId());
+                    } else {
+                        feedManager = new AmazonRepriceFeedManager(status.getRepriceId(), currentConfig.getRegion(),
+                                amazonAccessor);
+                    }
                     configDAO.setStatus(currentConfig.getRegion(), "RUNNING", status.getRepriceId());
                     int retVal = processRegion(currentConfig);
                     feedManager.flush();
@@ -186,7 +198,11 @@ public class RepriceWorker implements Runnable {
                 } catch (Exception e) {
                     log.error("Error flushing data.", e);
                 }
-                feedManager.close();
+                try {
+                    feedManager.close();
+                } catch (Exception e) {
+
+                }
             }
         }
 
@@ -307,8 +323,15 @@ public class RepriceWorker implements Runnable {
         @Override
         public void run() {
 
-            ExternalDataManager dataManager = new ExternalDataManager(this.items, this.config.getCacheRefreshTime(),
-                    jpAccessor, amazonAccessor);
+            ExternalDataManager dataManager = null;
+
+            if (this.config.getRegion().equals("KMD")) {
+                dataManager = new ExternalDataManager(this.items, this.config.getCacheRefreshTime(), jpAccessor,
+                        amazonAccessorMap, exchangeRates);
+            } else {
+                dataManager = new ExternalDataManager(this.items, this.config.getCacheRefreshTime(), jpAccessor,
+                        amazonAccessor);
+            }
 
             try {
 
@@ -462,8 +485,19 @@ public class RepriceWorker implements Runnable {
                                         lowestPrice = true;
                                     }
                                 } else {
-                                    auditTrail.append(item.getRegion()
-                                            + " price not available. Skipping second level repricing");
+                                    if (lowestRegionalPrice != null && lowestRegionalPrice < 0) {
+                                        RepricerFormula f = config.getFormula();
+                                        double upperLimit = f.getSecondLevelRepricingUpperLimit();
+                                        double upperLimitPercent = f.getSecondLevelRepricingUpperLimitPercent();
+                                        double diff = Math.min(price * upperLimitPercent / 100, upperLimit);
+                                        auditTrail.append("UL:" + diff + ",");
+                                        price = price + diff;
+                                        auditTrail
+                                                .append("Price after applying upper limit: " + price + "\nPrice Up\n");
+                                    } else {
+                                        auditTrail.append(item.getRegion()
+                                                + " price not available. Skipping second level repricing");
+                                    }
                                 }
                             }
 

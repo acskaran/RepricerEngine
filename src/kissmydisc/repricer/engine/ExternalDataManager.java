@@ -55,6 +55,10 @@ public class ExternalDataManager {
     private boolean cachedWeight = false;
     private boolean cachedPriceQuantity = false;
 
+    private Map<String, AmazonAccessor> regionAccessorMap = new HashMap<String, AmazonAccessor>();
+
+    private Map<String, Float> exchangeRates;
+
     /*
      * 1 = Used; Like New 2 = Used; Very Good 3 = Used; Good 4 = Used;
      * Acceptable 5 = Collectible; Like New 6 = Collectible; Very Good 7 =
@@ -73,6 +77,21 @@ public class ExternalDataManager {
         this.cachedWithin = cachedWithin;
         this.jpAccessor = jpAccessor;
         this.currentRegionAccessor = regionAccessor;
+    }
+
+    public ExternalDataManager(List<InventoryFeedItem> inventoryItems, Long cachedWithin, AmazonAccessor jpAccessor,
+            Map<String, AmazonAccessor> regionAccessorMap, Map<String, Float> exchangeRates) {
+        for (InventoryFeedItem item : inventoryItems) {
+            skuProductIdMap.put(item.getSku(), item.getProductId());
+            skus.add(item.getSku());
+            productIds.add(item.getProductId());
+            region = item.getRegion();
+            items.put(item.getSku(), item);
+        }
+        this.cachedWithin = cachedWithin;
+        this.jpAccessor = jpAccessor;
+        this.regionAccessorMap = regionAccessorMap;
+        this.exchangeRates = exchangeRates;
     }
 
     public Boolean isBlacklist(String sku) {
@@ -129,7 +148,7 @@ public class ExternalDataManager {
             if (skuNotFoundInDB != null && skuNotFoundInDB.size() > 0) {
                 final List<String> skuNotFoundInWeight = new ArrayList<String>();
                 for (String sku : skuNotFoundInDB) {
-                    if (weightMap.containsKey(sku) == false) {
+                    if (weightMap.containsKey(sku) == false && !region.equals("KMD")) {
                         skuNotFoundInWeight.add(sku);
                     }
                 }
@@ -206,13 +225,75 @@ public class ExternalDataManager {
         if (lowestAmazonPriceMap == null) {
             Map<String, Map<String, Pair<Float, Integer>>> productPriceAndQuantity = new HashMap<String, Map<String, Pair<Float, Integer>>>();
             lowestAmazonPriceMap = new HashMap<String, Float>();
-            try {
-                productPriceAndQuantity = currentRegionAccessor.getProductDetailsByASIN(productIds, true);
-            } catch (Exception e) {
-                log.error("Unable to retrieve lowest prices from Amazon.", e);
+
+            if ("KMD".equals(region)) {
+                String[] order = { "US", "UK", "DE", "IT", "ES", "CA" };
+                List<String> leftOutProductIds = productIds;
+                for (String entry : order) {
+                    if (log.isDebugEnabled()) {
+                        log.debug("Getting competitor price from " + entry + " for " + leftOutProductIds + " "
+                                + lowestAmazonPriceMap);
+                    }
+                    AmazonAccessor currentAccessor = regionAccessorMap.get(entry);
+                    Float exchangeRate = 1.0F;
+                    String currency = "USD";
+                    if (entry.equals("UK"))
+                        currency = "GBP";
+                    if (entry.equals("FR") || entry.equals("DE") || entry.equals("IT") || entry.equals("ES"))
+                        currency = "EUR";
+                    if (entry.equals("CA"))
+                        currency = "CAD";
+                    if (exchangeRates.containsKey(currency)) {
+                        exchangeRate = exchangeRates.get(currency);
+                    }
+                    try {
+                        productPriceAndQuantity = currentAccessor.getProductDetailsByASIN(leftOutProductIds, true);
+                        for (Map.Entry<String, Map<String, Pair<Float, Integer>>> productEntry : productPriceAndQuantity
+                                .entrySet()) {
+                            for (Map.Entry<String, Pair<Float, Integer>> priceEntry : productEntry.getValue()
+                                    .entrySet()) {
+                                if (priceEntry.getValue() != null) {
+                                    Float price = priceEntry.getValue().getFirst();
+                                    if (price > 0) {
+                                        price = price * exchangeRate;
+                                        priceEntry.getValue().setFirst(price);
+                                    }
+                                }
+                            }
+                        }
+                    } catch (Exception e) {
+                        log.error("Unable to retrieve lowest prices from Amazon - " + entry, e);
+                    }
+                    leftOutProductIds = cacheLowestRegionalPrices(productPriceAndQuantity, lowestAmazonPriceMap);
+                    if (leftOutProductIds == null || leftOutProductIds.isEmpty()) {
+                        break;
+                    }
+                }
+
+            } else {
+                try {
+                    productPriceAndQuantity = currentRegionAccessor.getProductDetailsByASIN(productIds, true);
+                    cacheLowestRegionalPrices(productPriceAndQuantity, lowestAmazonPriceMap);
+                } catch (Exception e) {
+                    log.error("Unable to retrieve lowest prices from Amazon.", e);
+                }
             }
-            Map<Long, Float> toUpdate = new HashMap<Long, Float>();
-            for (String tempSku : skus) {
+
+        }
+        if (lowestAmazonPriceMap.containsKey(sku)) {
+            return lowestAmazonPriceMap.get(sku);
+        } else {
+            return -1F;
+        }
+    }
+
+    private List<String> cacheLowestRegionalPrices(
+            Map<String, Map<String, Pair<Float, Integer>>> productPriceAndQuantity,
+            Map<String, Float> lowestAmazonPriceMap) {
+        Map<Long, Float> toUpdate = new HashMap<Long, Float>();
+        List<String> priceNotAvailable = new ArrayList<String>();
+        for (String tempSku : skus) {
+            if (!lowestAmazonPriceMap.containsKey(tempSku)) {
                 String productId = items.get(tempSku).getProductId();
                 InventoryFeedItem item = items.get(tempSku);
                 if (productPriceAndQuantity.containsKey(productId)) {
@@ -227,26 +308,28 @@ public class ExternalDataManager {
                         toReturn = pq;
                     }
                     if (toReturn != null) {
-                        if (toReturn.getFirst() != null) {
+                        if (toReturn.getFirst() != null && toReturn.getFirst() > 0) {
                             lowestAmazonPriceMap.put(tempSku, toReturn.getFirst());
                             toUpdate.put(item.getInventoryItemId(), toReturn.getFirst());
+                        } else {
+                            priceNotAvailable.add(productId);
                         }
+                    } else {
+                        priceNotAvailable.add(productId);
                     }
-                }
-            }
-            if (toUpdate != null || toUpdate.size() > 0) {
-                try {
-                    new InventoryItemDAO().updateLowestAmazonPrice(toUpdate);
-                } catch (DBException e) {
-                    log.error("Unable to update lowest prices in DB: " + toUpdate, e);
+                } else {
+                    priceNotAvailable.add(productId);
                 }
             }
         }
-        if (lowestAmazonPriceMap.containsKey(sku)) {
-            return lowestAmazonPriceMap.get(sku);
-        } else {
-            return -1F;
+        if (toUpdate != null || toUpdate.size() > 0) {
+            try {
+                new InventoryItemDAO().updateLowestAmazonPrice(toUpdate);
+            } catch (DBException e) {
+                log.error("Unable to update lowest prices in DB: " + toUpdate, e);
+            }
         }
+        return priceNotAvailable;
     }
 
     private String getAssociatedProductId(String productId) {
