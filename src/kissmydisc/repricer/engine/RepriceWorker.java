@@ -1,6 +1,7 @@
 package kissmydisc.repricer.engine;
 
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.Hashtable;
 import java.util.List;
@@ -20,11 +21,13 @@ import kissmydisc.repricer.dao.CurrencyConversionDAO;
 import kissmydisc.repricer.dao.DBException;
 import kissmydisc.repricer.dao.InventoryItemDAO;
 import kissmydisc.repricer.dao.LatestInventoryDAO;
+import kissmydisc.repricer.dao.ProductDAO;
 import kissmydisc.repricer.dao.RepriceReportDAO;
 import kissmydisc.repricer.dao.RepricerConfigurationDAO;
 import kissmydisc.repricer.dao.RepricerStatusReportDAO;
 import kissmydisc.repricer.model.InventoryFeedItem;
 import kissmydisc.repricer.model.PriceQuantityFeed;
+import kissmydisc.repricer.model.ProductDetails;
 import kissmydisc.repricer.model.RepriceReport;
 import kissmydisc.repricer.model.RepricerConfiguration;
 import kissmydisc.repricer.model.RepricerFormula;
@@ -210,31 +213,75 @@ public class RepriceWorker implements Runnable {
 
     private int processRegion(RepricerConfiguration currentConfig) throws DBException {
         String region = currentConfig.getRegion();
+        long cacheInterval = currentConfig.getCacheRefreshTime();
         LatestInventoryDAO latestInventoryDAO = new LatestInventoryDAO();
         long latestInventory = latestInventoryDAO.getLatestInventory(region);
         InventoryItemDAO inventoryDAO = new InventoryItemDAO();
         int limit = 500;
         String moreToken = status.getLastRepriced();
-        status.setTotalScheduled(status.getLastRepricedId());
-        status.setTotalCompleted(status.getLastRepricedId());
+        status.setTotalScheduled((int) status.getLastRepricedId());
+        status.setTotalCompleted((int) status.getLastRepricedId());
         int submittedTasks = 0;
-        int index = status.getLastRepricedId() / BATCH_SIZE;
-        int offset = status.getLastRepricedId() % BATCH_SIZE;
+        long itemNo = status.getLastRepricedId() + 1;
         do {
-
             Pair<List<InventoryFeedItem>, String> itemsAndMoreToken = inventoryDAO.getMatchingItems(latestInventory,
                     currentConfig.getRegion(), moreToken, limit);
             List<InventoryFeedItem> items = itemsAndMoreToken.getFirst();
             moreToken = itemsAndMoreToken.getSecond();
+            log.debug("Repricer " + region + " got " + itemsAndMoreToken.getFirst().size() + " to process, moreToken: "
+                    + moreToken);
             if (items != null) {
-                for (int i = 0; i < items.size(); i++) {
-                    int toIndex = Math.min(i + BATCH_SIZE, items.size()) - 1;
-                    List<InventoryFeedItem> toProcess = items.subList(i, toIndex + 1);
-                    status.addScheduled(toIndex - i + 1);
-                    i = toIndex;
-                    executor.execute(new WorkerThreadInternational(toProcess, currentConfig, feedManager,
-                            (index * BATCH_SIZE) + offset));
-                    index++;
+                List<InventoryFeedItem> toProcessCached = new ArrayList<InventoryFeedItem>();
+                List<InventoryFeedItem> toProcessAndCache = new ArrayList<InventoryFeedItem>();
+                for (int i = 0; i < items.size(); i += BATCH_SIZE) {
+                    int toIndex = Math.min(i + BATCH_SIZE, items.size());
+                    List<InventoryFeedItem> toProcess = items.subList(i, toIndex);
+                    List<String> productIds = new ArrayList<String>();
+                    for (InventoryFeedItem item : toProcess) {
+                        productIds.add(item.getProductId());
+                    }
+                    Map<String, ProductDetails> details = new ProductDAO().getProductDetails(productIds);
+                    for (InventoryFeedItem item : toProcess) {
+                        boolean shouldCache = true;
+                        if (details != null && details.containsKey(item.getProductId())) {
+                            ProductDetails detail = details.get(item.getProductId());
+                            if (detail.getLastUpdated() != null) {
+                                if (cacheInterval >= 0
+                                        && detail.getLastUpdated().after(
+                                                new Date(System.currentTimeMillis() - cacheInterval))) {
+                                    shouldCache = false;
+                                }
+                            }
+                        }
+                        List<InventoryFeedItem> toProcessTemp = null;
+                        item.setItemNo(itemNo++);
+                        if (shouldCache) {
+                            toProcessAndCache.add(item);
+                            toProcessTemp = toProcessAndCache;
+                        } else {
+                            toProcessCached.add(item);
+                            toProcessTemp = toProcessCached;
+                        }
+                        if (toProcessTemp.size() == BATCH_SIZE) {
+                            status.addScheduled(toProcessTemp.size());
+                            executor.execute(new WorkerThreadInternational(toProcessTemp, currentConfig, feedManager));
+                            submittedTasks++;
+                            if (shouldCache) {
+                                toProcessAndCache = new ArrayList<InventoryFeedItem>();
+                            } else {
+                                toProcessCached = new ArrayList<InventoryFeedItem>();
+                            }
+                        }
+                    }
+                }
+                if (toProcessCached != null && !toProcessCached.isEmpty()) {
+                    status.addScheduled(toProcessCached.size());
+                    executor.execute(new WorkerThreadInternational(toProcessCached, currentConfig, feedManager));
+                    submittedTasks++;
+                }
+                if (toProcessAndCache != null && !toProcessAndCache.isEmpty()) {
+                    status.addScheduled(toProcessAndCache.size());
+                    executor.execute(new WorkerThreadInternational(toProcessAndCache, currentConfig, feedManager));
                     submittedTasks++;
                 }
             }
@@ -254,6 +301,8 @@ public class RepriceWorker implements Runnable {
         // Wait for it to complete.
         while (!isTerminated(region) && !paused && executor.getCompletedTaskCount() < submittedTasks) {
             try {
+                log.debug("Repricer: " + region + "Sleeping for 10 seconds - completed: "
+                        + executor.getCompletedTaskCount() + ", submitted: " + submittedTasks);
                 Thread.sleep(10000);
                 rsrdao.updateStatus(status);
             } catch (InterruptedException e) {
@@ -313,11 +362,10 @@ public class RepriceWorker implements Runnable {
         private int index;
 
         public WorkerThreadInternational(final List<InventoryFeedItem> items, final RepricerConfiguration config,
-                final RepriceFeedManager feedManager, final int index) {
+                final RepriceFeedManager feedManager) {
             this.items = items;
             this.config = config;
             this.feedManager = feedManager;
-            this.index = index;
         }
 
         @Override
@@ -538,7 +586,7 @@ public class RepriceWorker implements Runnable {
                             } catch (Exception e) {
                                 log.error("Error writing data to Amazon.", e);
                             }
-                            status.addRepriceMetrics(item.getRegionProductId(), index, metric, lowestPrice);
+                            status.addRepriceMetrics(item.getRegionProductId(), item.getItemNo(), metric, lowestPrice);
                         } else {
                             feed.setQuantity(quantity);
                             feed.setPrice((float) price);

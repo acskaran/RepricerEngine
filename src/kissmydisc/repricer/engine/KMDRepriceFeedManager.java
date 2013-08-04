@@ -47,8 +47,8 @@ public class KMDRepriceFeedManager implements RepriceFeedManager {
             feeds.add(feed);
         }
         if (feeds.size() == MAX_ITEMS) {
-            new KMDInventoryDAO().updateKMDPrice(feeds);
             log.info("Writing feeds to KMD Database");
+            new KMDInventoryDAO().updateKMDPrice(feeds);
             feeds = new ArrayList<PriceQuantityFeed>();
         }
     }
@@ -56,6 +56,7 @@ public class KMDRepriceFeedManager implements RepriceFeedManager {
     public synchronized void flush() throws Exception {
         if (feeds.size() > 0) {
             new KMDInventoryDAO().updateKMDPrice(feeds);
+            feeds = new ArrayList<PriceQuantityFeed>();
         }
     }
 

@@ -134,7 +134,7 @@ public class RepricerStatus {
 	}
 
 	public synchronized void addRepriceMetrics(final String lastRepriced,
-			int id, METRIC metric, boolean lowestPrice) {
+			long id, METRIC metric, boolean lowestPrice) {
 		if (this.lastRepricedId < id) {
 			this.lastRepriced = lastRepriced;
 			this.lastRepricedId = id;
@@ -186,7 +186,7 @@ public class RepricerStatus {
 	private int priceUp = 0;
 	private int noPriceChange = 0;
 	private String lastRepriced = null;
-	private int lastRepricedId = 0;
+	private long lastRepricedId = 0;
 	private long elapsed = 0;
 	private int lowestPrice = 0;
 	private int obiPriceUp = 0;
@@ -202,7 +202,7 @@ public class RepricerStatus {
 		this.quantityResetToZero = quantityResetToZero;
 	}
 
-	public int getLastRepricedId() {
+	public long getLastRepricedId() {
 		return lastRepricedId;
 	}
 

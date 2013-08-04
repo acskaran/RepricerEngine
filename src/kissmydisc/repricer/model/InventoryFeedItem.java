@@ -13,9 +13,18 @@ public class InventoryFeedItem {
 	private float weight;
 	private float lowestAmazonPrice;
 	private boolean obiItem = false;
-
+	private long itemNo = 0;
+	
 	public boolean getObiItem() {
 		return obiItem;
+	}
+	
+	public void setItemNo(long itemNo) {
+	    this.itemNo = itemNo;
+	}
+	
+	public long getItemNo() {
+	    return this.itemNo;
 	}
 
 	public void setObiItem(boolean obi) {

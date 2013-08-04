@@ -445,7 +445,7 @@ public class ExternalDataManager {
                             quantityMap.put(sku, details.getUsedQuantity());
                         }
                     }
-                    if (cachedWithin >= 0
+                    if (cachedWithin >= 0 && details.getLastUpdated() != null
                             && details.getLastUpdated().before(new Date(System.currentTimeMillis() - cachedWithin))) {
                         skuNotFoundInDB.add(sku);
                     }

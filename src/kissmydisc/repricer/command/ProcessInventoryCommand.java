@@ -167,9 +167,11 @@ public class ProcessInventoryCommand extends Command {
             while (true) {
                 line = reader.readLine();
                 if (line != null) {
+                    boolean valid = true;
                     String[] values = line.split("\t");
                     if (values != null && values.length != reqdCols) {
                         log.info("Row with wrong format " + line + ", ignoring..");
+                        valid = false;
                     } else {
                         InventoryFeedItem item = new InventoryFeedItem();
                         item.setInventoryId(inventoryId);
@@ -178,38 +180,61 @@ public class ProcessInventoryCommand extends Command {
                         boolean obi = false;
                         for (int col : columnsNeeded) {
                             if ("sku".equalsIgnoreCase(columnAttributeMap.get(col))) {
+                                if (values[col] == null || values[col].trim().equals("")) {
+                                    valid = false;
+                                    break;
+                                }
                                 item.setSku(values[col]);
                             } else if ("price".equalsIgnoreCase(columnAttributeMap.get(col))) {
+                                if (values[col] == null || values[col].trim().equals("")) {
+                                    valid = false;
+                                    break;
+                                }
                                 item.setPrice(Float.parseFloat(values[col]));
                             } else if ("quantity".equalsIgnoreCase(columnAttributeMap.get(col))) {
+                                if (values[col] == null || values[col].trim().equals("")) {
+                                    valid = false;
+                                    break;
+                                }
                                 item.setQuantity(Integer.parseInt(values[col]));
                             } else if ("product-id".equalsIgnoreCase(columnAttributeMap.get(col))) {
+                                if (values[col] == null || values[col].trim().equals("")) {
+                                    valid = false;
+                                    break;
+                                }
                                 item.setProductId(values[col]);
                                 region_product_id += "_" + values[col];
                                 item.setRegionProductId(region_product_id);
                             } else if ("item-condition".equalsIgnoreCase(columnAttributeMap.get(col))) {
+                                if (values[col] == null || values[col].trim().equals("")) {
+                                    valid = false;
+                                    break;
+                                }
                                 item.setCondition(Integer.parseInt(values[col]));
                             } else if ("item-note".equalsIgnoreCase(columnAttributeMap.get(col))) {
+                                if (values[col] == null || values[col].trim().equals("")) {
+                                    valid = false;
+                                    break;
+                                }
                                 String val = values[col];
                                 val = val.toLowerCase();
-                                if (val.contains("with box") || val.contains("OBI") || val.contains("Obi")
-                                        || val.contains("obi") || val.contains("OBi") || val.contains("oBi")) {
+                                if (val.contains("with box") || val.contains("with obi")) {
                                     obi = true;
-                                }
-                                if (val.contains("no obi")) {
-                                    obi = false;
                                 }
                             }
                         }
                         // ALTER TABLE `inventory_items`
                         // ADD COLUMN `obi` BIT NULL AFTER
                         // `lowest_amazon_price`;
-                        if (obi && item.getCondition() != 11) {
+                        if (obi && item.getCondition() != 11 && valid) {
                             item.setObiItem(true);
                         }
-                        itemList.add(item);
+                        if (valid) {
+                            itemList.add(item);
+                        }
                     }
-                    processed++;
+                    if (valid)
+                        processed++;
                 }
                 if (processed % 1000 == 0) {
                     log.info("Processed " + processed + " rows " + this);
