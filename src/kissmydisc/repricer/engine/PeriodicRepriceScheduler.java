@@ -27,8 +27,9 @@ public class PeriodicRepriceScheduler implements Runnable {
                     Date now = new Date(System.currentTimeMillis());
                     // If interval is past, and the status of the repricer
                     // is scheduled.
-                    if (repricer.getInterval() != -1 && "SCHEDULED".equals(repricer.getStatus())
-                            && repricer.getNextRun() != null && repricer.getNextRun().before(now)) {
+                    if (repricer.getInterval() != -1 && !repricer.getRegion().startsWith("N-")
+                            && "SCHEDULED".equals(repricer.getStatus()) && repricer.getNextRun() != null
+                            && repricer.getNextRun().before(now)) {
                         log.info(repricer.getNextRun() + " now " + now);
                         toSchedule.add(repricer.getRegion());
                         configDAO.setStatus(repricer.getRegion(), "WAITING", "SCHEDULED");

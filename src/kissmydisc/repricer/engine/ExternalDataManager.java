@@ -159,15 +159,30 @@ public class ExternalDataManager {
 
                         // Get Weight From Amazon.
                         try {
-                            Map<String, Float> weights = currentRegionAccessor.getWeight(skuNotFoundInDB);
+
+                            List<String> asinsForSku = new ArrayList<String>();
+                            for (String sku : skuNotFoundInDB) {
+                                String productId = skuProductIdMap.get(sku);
+                                productId = getAssociatedProductId(productId);
+                                asinsForSku.add(productId);
+                            }
+
+                            Map<String, Float> weights = currentRegionAccessor.getWeightFromASIN(asinsForSku);
                             Map<String, Float> productIdWeights = new HashMap<String, Float>();
                             if (weights != null) {
-                                weightMap.putAll(weights);
-                                for (String sku : weights.keySet()) {
-                                    if (weights.containsKey(sku)) {
+                                Map<String, Float> skuWeights = new HashMap<String, Float>();
+                                for (String sku : skus) {
+                                    String productId = getAssociatedProductId(skuProductIdMap.get(sku));
+                                    if (weights.containsKey(productId)) {
+                                        skuWeights.put(sku, weights.get(productId));
+                                    }
+                                }
+                                weightMap.putAll(skuWeights);
+                                for (String sku : skuWeights.keySet()) {
+                                    if (skuWeights.containsKey(sku)) {
                                         String productId = skuProductIdMap.get(sku);
                                         productId = getAssociatedProductId(productId);
-                                        productIdWeights.put(productId, weights.get(sku));
+                                        productIdWeights.put(productId, skuWeights.get(sku));
                                     }
                                 }
                             }

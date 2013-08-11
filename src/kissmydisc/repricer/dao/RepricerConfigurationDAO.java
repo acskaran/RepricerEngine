@@ -24,21 +24,21 @@ public class RepricerConfigurationDAO extends DBAccessor {
 
     /*
      * ALTER TABLE `repricer_formula` ADD COLUMN `obi_quantity_limit` INT(10)
-     NULL AFTER `quantity_limit`, ADD COLUMN `obi_formula` VARCHAR(100) NULL
-     AFTER `formula`;
+     * NULL AFTER `quantity_limit`, ADD COLUMN `obi_formula` VARCHAR(100) NULL
+     * AFTER `formula`;
      * 
      * 
      * 
      * ALTER TABLE `repricer_formula` ADD COLUMN `default_weight` DOUBLE NOT
-     NULL AFTER `obi_formula`, ADD COLUMN `obi_default_weight` DOUBLE NOT NULL
-     AFTER `default_weight`;
+     * NULL AFTER `obi_formula`, ADD COLUMN `obi_default_weight` DOUBLE NOT NULL
+     * AFTER `default_weight`;
      * 
      * 
      * 
      * ALTER TABLE `repricer_formula` CHANGE COLUMN `default_weight`
-      `default_weight` DOUBLE NOT NULL DEFAULT '-1.0' AFTER `obi_formula`,
-      CHANGE COLUMN `obi_default_weight` `obi_default_weight` DOUBLE NOT NULL
-      DEFAULT '-1.0' AFTER `default_weight`;
+     * `default_weight` DOUBLE NOT NULL DEFAULT '-1.0' AFTER `obi_formula`,
+     * CHANGE COLUMN `obi_default_weight` `obi_default_weight` DOUBLE NOT NULL
+     * DEFAULT '-1.0' AFTER `default_weight`;
      */
 
     private static final Log log = LogFactory.getLog(RepricerConfiguration.class);
@@ -51,7 +51,7 @@ public class RepricerConfigurationDAO extends DBAccessor {
         super();
     }
 
-    public Map<String, Pair<String, String>> getRepricerMarketplaceAndSeller() throws DBException {
+    private Map<String, Pair<String, String>> getRepricerMarketplaceAndSeller() throws DBException {
         String selectQuery = "select region, marketplace_id, seller_id from repricer_configuration RC";
         PreparedStatement st = null;
         Connection conn = null;

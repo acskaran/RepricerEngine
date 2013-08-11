@@ -179,7 +179,6 @@ public class InventoryItemDAO extends DBAccessor {
             String regionProduct = region + "_" + productId;
             st.setString(index++, regionProduct);
             rs = st.executeQuery();
-            int count = 0;
             List<InventoryFeedItem> result = new ArrayList<InventoryFeedItem>();
             while (rs.next()) {
                 InventoryFeedItem item = new InventoryFeedItem();
@@ -194,7 +193,6 @@ public class InventoryItemDAO extends DBAccessor {
                 item.setObiItem(rs.getBoolean("OBI"));
                 item.setSku(rs.getString("SKU"));
                 result.add(item);
-                count++;
             }
             return result;
         } catch (SQLException e) {
@@ -227,4 +225,5 @@ public class InventoryItemDAO extends DBAccessor {
             releaseConnection();
         }
     }
+
 }

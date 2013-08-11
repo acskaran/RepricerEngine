@@ -41,6 +41,10 @@ public class CommandManager extends DBAccessor {
                 c = new ContinueRepricer(id, metadata, date);
             } else if ("ADD_ASSOCIATION".equals(command)) {
                 c = new AddAssociationCommand(id, metadata, date);
+            } else if ("CREATE_LISTING".equals(command)) {
+                c = new CreateListingsCommand(id, metadata, date);
+            } else if ("ADD_ITEMS_TO_INVENTORY".equals(command)) {
+                c = new AddItemsToInventoryCommand(id, metadata, date);
             } else {
                 log.info("Unknown command [command=" + command + ", id=" + id + "], ignoring!");
             }

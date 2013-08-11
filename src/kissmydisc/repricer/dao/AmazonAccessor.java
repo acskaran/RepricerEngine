@@ -52,6 +52,9 @@ import com.amazonservices.mws.products.model.GetLowestOfferListingsForASINResult
 import com.amazonservices.mws.products.model.GetMatchingProductForIdRequest;
 import com.amazonservices.mws.products.model.GetMatchingProductForIdResponse;
 import com.amazonservices.mws.products.model.GetMatchingProductForIdResult;
+import com.amazonservices.mws.products.model.GetMatchingProductRequest;
+import com.amazonservices.mws.products.model.GetMatchingProductResponse;
+import com.amazonservices.mws.products.model.GetMatchingProductResult;
 import com.amazonservices.mws.products.model.IdListType;
 import com.amazonservices.mws.products.model.LowestOfferListingList;
 import com.amazonservices.mws.products.model.LowestOfferListingType;
@@ -166,6 +169,9 @@ public class AmazonAccessor {
     }
 
     public AmazonAccessor(String region, String marketplaceId, String sellerId) {
+        if (region.startsWith("N-")) {
+            region = region.substring(2, region.length());
+        }
         productService = PRODUCT_SERVICE_MAP.get(region);
         feedsService = FEEDS_SERVICE_MAP.get(region);
         this.marketplaceId = marketplaceId;
@@ -323,6 +329,31 @@ public class AmazonAccessor {
         return null;
     }
 
+    public String sendInventoryLoaderFeed(String feedFile, String md5) throws Exception {
+        if (AppConfig.getBoolean("ShouldNotSubmitFeedToAmazon", false)) {
+            return UUID.randomUUID().toString();
+        }
+        SubmitFeedRequest request = new SubmitFeedRequest();
+        request.setMerchant(sellerId);
+        List<String> mkt = new ArrayList<String>();
+        mkt.add(marketplaceId);
+        IdList list = new IdList(mkt);
+        request.setMarketplaceIdList(list);
+        request.setFeedType("_POST_FLAT_FILE_INVLOADER_DATA_");
+        request.setContentMD5(md5);
+        request.setFeedContent(new FileInputStream(feedFile));
+        request.setContentType(getContentType(region));
+        SubmitFeedResponse response = feedsService.submitFeed(request);
+        if (response.isSetSubmitFeedResult()) {
+            SubmitFeedResult result = response.getSubmitFeedResult();
+            if (result.isSetFeedSubmissionInfo()) {
+                FeedSubmissionInfo info = result.getFeedSubmissionInfo();
+                return info.getFeedSubmissionId();
+            }
+        }
+        return null;
+    }
+
     public Map<String, Float> getWeight(List<String> reqId) throws Exception {
         if (AppConfig.getBoolean("ShouldNotGetWeightFromAmazon", false)) {
             Map<String, Float> testMap = new HashMap<String, Float>();
@@ -407,6 +438,115 @@ public class AmazonAccessor {
                                                     }
                                                     weightMap.put(sku, weight);
                                                 }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if (log.isDebugEnabled()) {
+                        log.debug("Time taken for GetWeight call: " + (System.currentTimeMillis() - startTime)
+                                + ", Region=" + region);
+                    }
+                } catch (Exception e) {
+                    if (e.getMessage().contains("throttled") || e.getMessage().contains("Throttled")) {
+                        shouldRetry = true;
+                        if (log.isDebugEnabled()) {
+                            log.debug("Retrying throttled GetWeight request for " + region);
+                        }
+                    }
+                    log.error("Error getting weight for items, returning the weight got so far: " + weightMap, e);
+                }
+            }
+        }
+        return weightMap;
+    }
+
+    public Map<String, Float> getWeightFromASIN(List<String> asins) throws Exception {
+        if (AppConfig.getBoolean("ShouldNotGetWeightFromAmazon", false)) {
+            Map<String, Float> testMap = new HashMap<String, Float>();
+            return testMap;
+        }
+        int maxBatchSize = 5;
+        int reqsReqd = asins.size() / maxBatchSize;
+
+        Map<String, Float> weightMap = new HashMap<String, Float>();
+
+        AmazonAccessMonitor getWeightMonitor = GET_WEIGHT_MONITOR.get(region);
+
+        for (int req = 0; req <= reqsReqd; req++) {
+
+            List<String> ids = asins.subList(req * maxBatchSize, (Math.min((req + 1) * maxBatchSize, asins.size())));
+
+            if (ids.size() == 0) {
+                continue;
+            }
+
+            boolean shouldRetry = true;
+            for (int retry = 0; shouldRetry && retry < MAX_RETRY; retry++) {
+                shouldRetry = false;
+                int tries = 0;
+                int waitTime = 0;
+                while (tries++ < 2 * MAX_TRIES) {
+                    waitTime = getWeightMonitor.addRequest(ids.size());
+                    if (waitTime == 0) {
+                        break;
+                    } else {
+                        Thread.sleep(waitTime);
+                        log.debug("Waiting to get request quota.");
+                    }
+                }
+                if (waitTime > 0) {
+                    log.warn("A GetWeight Request is starving for quota - executing without complying with policy.");
+                }
+
+                GetMatchingProductRequest gmpr = new GetMatchingProductRequest();
+                List<String> uniqAsins = new ArrayList<String>();
+                for (String asin : asins) {
+                    if (!uniqAsins.contains(asin)) {
+                        uniqAsins.add(asin);
+                    }
+                }
+                ASINListType asinList = new ASINListType(uniqAsins);
+                gmpr.setASINList(asinList);
+                gmpr.setMarketplaceId(marketplaceId);
+                gmpr.setSellerId(sellerId);
+
+                try {
+                    long startTime = System.currentTimeMillis();
+                    GetMatchingProductResponse resp = productService.getMatchingProduct(gmpr);
+                    List<GetMatchingProductResult> lst = resp.getGetMatchingProductResult();
+                    for (GetMatchingProductResult r : lst) {
+                        String asin = r.getASIN();
+                        if (r.isSetProduct()) {
+                            Product p = r.getProduct();
+                            AttributeSetList l = p.getAttributeSets();
+                            for (Object o : l.getAny()) {
+                                Node n = (Node) o;
+                                NodeList m = n.getChildNodes();
+                                for (int i = 0; i < m.getLength(); i++) {
+                                    Node nn = m.item(i);
+                                    if ("ns2:PackageDimensions".equals(nn.getNodeName())) {
+                                        NodeList nnl = nn.getChildNodes();
+                                        for (int j = 0; j < nnl.getLength(); j++) {
+                                            Node nnn = nnl.item(j);
+                                            if ("ns2:Weight".equals(nnn.getNodeName())) {
+                                                Float weight = 0.0F;
+                                                if (nnn.getTextContent() != null) {
+                                                    weight = Float.parseFloat(nnn.getTextContent());
+                                                }
+                                                String units = nnn.getAttributes().getNamedItem("Units")
+                                                        .getTextContent();
+                                                units = units.toLowerCase();
+                                                if ("pounds".equalsIgnoreCase(units)) {
+                                                    weight = weight * 453.592F; // (Converting
+                                                                                // to
+                                                                                // grams
+                                                                                // from
+                                                                                // pounds);
+                                                }
+                                                weightMap.put(asin, weight);
                                             }
                                         }
                                     }

@@ -128,7 +128,7 @@ public class RepricerEngine {
 
     public synchronized void scheduleRepricer(final List<String> regions, String priority) throws DBException {
         synchronized (REPRICER_SCHEDULE) {
-            if (REPRICER_SCHEDULE.size() > 10) {
+            if (REPRICER_SCHEDULE.size() > 20) {
                 log.warn("There are more reprice schedules in the queue, not adding any more schedules");
             }
             long scheduleId = System.currentTimeMillis();

@@ -25,4 +25,5 @@ public class FeedsDAO extends DBAccessor {
             releaseConnection();
         }
     }
+    
 }

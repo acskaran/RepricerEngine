@@ -143,7 +143,7 @@ public class RepriceWorker implements Runnable {
                     feedManager.close();
                     executor.shutdown();
                     if (retVal == 0) {
-                        if (currentConfig.getInterval() < 0) {
+                        if (currentConfig.getInterval() < 0 || region.startsWith("N-")) {
                             configDAO.setCompletedOrTerminated(region, COMPLETED);
                             status.setStatus(COMPLETED);
                             rsrdao.updateStatus(status);
