@@ -39,20 +39,25 @@ public class CreateListingsAsyncCommand implements Runnable {
 
     private static Log log = LogFactory.getLog(CreateListingsAsyncCommand.class);
 
-    public CreateListingsAsyncCommand(final int id, final String region) {
+    private boolean continueCreateListing;
+
+    public CreateListingsAsyncCommand(final int id, final String region, boolean continueCreateListing) {
         this.id = id;
         this.region = region;
+        this.continueCreateListing = continueCreateListing;
     }
 
-    public CreateListingsAsyncCommand(int id, String region, String fileUrl) {
+    public CreateListingsAsyncCommand(int id, String region, String fileUrl, boolean continueCreateListing) {
         this.id = id;
         this.region = region;
         this.fileUrl = fileUrl;
+        this.continueCreateListing = continueCreateListing;
     }
 
     public void run() {
         CommandDAO cdao = new CommandDAO();
         try {
+            // TODO: Get the latest create listing for the region,
             cdao.setStatus(id, "STARTED");
             new CreateListingStatusDAO().startCreateListing(region);
             if (region != null) {
@@ -141,67 +146,65 @@ public class CreateListingsAsyncCommand implements Runnable {
         for (InventoryFeedItem item : items) {
             int parameter = 1;
             String listing = "";
-            if (item.getQuantity() != 0) {
-                while (true) {
-                    String param = config.getNext(parameter++);
-                    if (param == null)
-                        break;
-                    if (param.equals("sku")) {
-                        listing += item.getSku() + TAB;
+            while (true) {
+                String param = config.getNext(parameter++);
+                if (param == null)
+                    break;
+                if (param.equals("sku")) {
+                    listing += item.getSku() + TAB;
+                }
+                if (param.equals("product-id")) {
+                    listing += item.getProductId() + TAB;
+                }
+                if (param.equals("product-id-type")) {
+                    listing += "1" + TAB;
+                }
+                if (param.equals("item-condition")) {
+                    listing += item.getCondition() + TAB;
+                }
+                if (param.equals("price")) {
+                    listing += PriceUtils.getPrice(item.getPrice(), region) + TAB;
+                }
+                if (param.equals("quantity")) {
+                    listing += item.getQuantity() + TAB;
+                }
+                if (param.equals("item-note")) {
+                    if (item.getCondition() == 11) {
+                        listing += config.getItemNoteNew() + TAB;
                     }
-                    if (param.equals("product-id")) {
-                        listing += item.getProductId() + TAB;
-                    }
-                    if (param.equals("product-id-type")) {
-                        listing += "1" + TAB;
-                    }
-                    if (param.equals("item-condition")) {
-                        listing += item.getCondition() + TAB;
-                    }
-                    if (param.equals("price")) {
-                        listing += PriceUtils.getPrice(item.getPrice(), region) + TAB;
-                    }
-                    if (param.equals("quantity")) {
-                        listing += item.getQuantity() + TAB;
-                    }
-                    if (param.equals("item-note")) {
-                        if (item.getCondition() == 11) {
-                            listing += config.getItemNoteNew() + TAB;
-                        }
-                        if (item.getCondition() == 2) {
-                            if (item.getObiItem()) {
-                                listing += config.getItemNoteObi() + TAB;
-                            } else {
-                                listing += config.getItemNoteUsed() + TAB;
-                            }
-                        }
-                    }
-                    if (param.equals("add-delete")) {
-                        listing += "a" + TAB;
-                    }
-                    if (param.equals("will-ship-internationally")) {
-                        String val = config.getWillShipInternationally();
-                        if (val != null && val.trim() != "") {
-                            listing += val.trim() + TAB;
-                        }
-                    }
-                    if (param.equals("expedited-shipping")) {
-                        String val = config.getExpeditedShipping();
-                        if (val != null && val.trim() != "") {
-                            listing += val.trim() + TAB;
-                        }
-                    }
-                    if (param.equals("item-is-marketplace")) {
-                        String val = config.getItemIsMarketplace();
-                        if (val != null && val.trim() != "") {
-                            listing += val.trim() + TAB;
+                    if (item.getCondition() == 2) {
+                        if (item.getObiItem()) {
+                            listing += config.getItemNoteObi() + TAB;
+                        } else {
+                            listing += config.getItemNoteUsed() + TAB;
                         }
                     }
                 }
-                listing = listing.trim();
-                listing += NEWLINE;
-                bos.write(listing.getBytes());
+                if (param.equals("add-delete")) {
+                    listing += "a" + TAB;
+                }
+                if (param.equals("will-ship-internationally")) {
+                    String val = config.getWillShipInternationally();
+                    if (val != null && val.trim() != "") {
+                        listing += val.trim() + TAB;
+                    }
+                }
+                if (param.equals("expedited-shipping")) {
+                    String val = config.getExpeditedShipping();
+                    if (val != null && val.trim() != "") {
+                        listing += val.trim() + TAB;
+                    }
+                }
+                if (param.equals("item-is-marketplace")) {
+                    String val = config.getItemIsMarketplace();
+                    if (val != null && val.trim() != "") {
+                        listing += val.trim() + TAB;
+                    }
+                }
             }
+            listing = listing.trim();
+            listing += NEWLINE;
+            bos.write(listing.getBytes());
         }
         bos.close();
     }

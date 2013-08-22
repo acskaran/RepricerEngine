@@ -26,7 +26,11 @@ import com.amazonaws.mws.MarketplaceWebService;
 import com.amazonaws.mws.MarketplaceWebServiceClient;
 import com.amazonaws.mws.MarketplaceWebServiceConfig;
 import com.amazonaws.mws.model.ContentType;
+import com.amazonaws.mws.model.FeedProcessingStatus;
 import com.amazonaws.mws.model.FeedSubmissionInfo;
+import com.amazonaws.mws.model.GetFeedSubmissionListRequest;
+import com.amazonaws.mws.model.GetFeedSubmissionListResponse;
+import com.amazonaws.mws.model.GetFeedSubmissionListResult;
 import com.amazonaws.mws.model.IdList;
 import com.amazonaws.mws.model.SubmitFeedRequest;
 import com.amazonaws.mws.model.SubmitFeedResponse;
@@ -1155,6 +1159,40 @@ public class AmazonAccessor {
         }
     }
 
+    public boolean isSubmissionProcessed(List<String> submissionIds) throws Exception {
+        if (AppConfig.getBoolean("ShouldNotCheckFeedSubmissionFromAmazon", false)) {
+            return true;
+        }
+        GetFeedSubmissionListRequest request = new GetFeedSubmissionListRequest();
+        request.setMerchant(sellerId);
+        IdList list = new IdList(submissionIds);
+        request.setFeedSubmissionIdList(list);
+        GetFeedSubmissionListResponse response = feedsService.getFeedSubmissionList(request);
+        if (response.isSetGetFeedSubmissionListResult()) {
+            GetFeedSubmissionListResult result = response.getGetFeedSubmissionListResult();
+            if (result.isSetFeedSubmissionInfoList()) {
+                List<FeedSubmissionInfo> infoList = result.getFeedSubmissionInfoList();
+                if (infoList != null) {
+                    List<String> ids = new ArrayList<String>();
+                    ids.addAll(submissionIds);
+                    for (FeedSubmissionInfo info : infoList) {
+                        if (info.isSetFeedProcessingStatus()) {
+                            String status = info.getFeedProcessingStatus();
+                            if (status.equals("_DONE_")) {
+                                ids.remove(info.getFeedSubmissionId());
+                            }
+                        }
+                    }
+                    if (ids.size() == 0) {
+                        return true;
+                    } else {
+                        return false;
+                    }
+                }
+            }
+        }
+        return false;
+    }
 }
 
 /*

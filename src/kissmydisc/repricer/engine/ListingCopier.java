@@ -41,7 +41,13 @@ public class ListingCopier {
         this.toRegion = toRegion;
     }
 
-    private List<InventoryFeedItem> itemsBuffer;
+    private List<String> submissionIds = new ArrayList<String>();
+
+    private List<Pair<String, String>> pqFiles = new ArrayList<Pair<String, String>>();
+
+    private static String TAB = "\t";
+
+    private static String NEWLINE = "\n";
 
     private DigestOutputStream dos = null;
 
@@ -50,6 +56,12 @@ public class ListingCopier {
     private String directory = "feeds/";
 
     private String feedFile;
+
+    private DigestOutputStream pqFileStream;
+
+    private String pqFeedFile;
+
+    private int rowsWritten = 0;
 
     private static final Log log = LogFactory.getLog(ListingCopier.class);
 
@@ -66,15 +78,24 @@ public class ListingCopier {
         long totalItems = inventoryDetails.getSecond();
         long id = totalItems + 1;
         ListingConfiguration config = new ListingConfigurationDAO().getListingConfiguration(toRegion);
+        Map<String, Boolean> doneLastIteration = new HashMap<String, Boolean>();
         try {
             do {
+                Map<String, Boolean> doneThisIteration = new HashMap<String, Boolean>();
                 Pair<List<InventoryFeedItem>, String> itemsAndMoreToken = inventoryDAO.getMatchingItems(
                         latestInventory.getFirst(), fromRegion, moreToken, limit);
                 moreToken = itemsAndMoreToken.getSecond();
                 List<InventoryFeedItem> items = itemsAndMoreToken.getFirst();
                 List<InventoryFeedItem> newItems = new ArrayList<InventoryFeedItem>();
+                List<PriceQuantityFeed> quantityZero = new ArrayList<PriceQuantityFeed>();
                 for (InventoryFeedItem item : items) {
-                    if (item.getQuantity() != 0) {
+                    if (lastProcessed != item.getRegionProductId()) {
+                        identifiedMoreToken = lastProcessed;
+                    }
+                    String key = item.getProductId() + " " + item.getCondition() + " " + item.getObiItem();
+                    lastProcessed = item.getRegionProductId();
+                    PriceQuantityFeed pqFeed = new PriceQuantityFeed(toRegion);
+                    if (!doneLastIteration.containsKey(key) && !doneThisIteration.containsKey(key)) {
                         item.setInventoryId(toInventoryId);
                         String sku = item.getSku();
                         if (item.getCondition() == 11) {
@@ -87,20 +108,26 @@ public class ListingCopier {
                                 sku = "U-MA-" + toRegion + id++;
                             }
                         }
+                        pqFeed.setPrice(item.getPrice());
+                        pqFeed.setQuantity(item.getQuantity());
+                        if (item.getQuantity() == 0) {
+                            pqFeed.setPrice(20000);
+                            quantityZero.add(pqFeed);
+                        }
                         item.setSku(sku);
+                        pqFeed.setSku(sku);
                         item.setRegion(toRegion);
                         item.setRegionProductId(toRegion + "_" + item.getProductId());
                         newItems.add(item);
-                        if (lastProcessed != item.getRegionProductId()) {
-                            identifiedMoreToken = lastProcessed;
-                        }
-                        lastProcessed = item.getRegionProductId();
                     }
+                    doneThisIteration.put(key, true);
                 }
+                doneLastIteration = doneThisIteration;
                 totalAdded += newItems.size();
                 new InventoryItemDAO().addItems(newItems);
                 new LatestInventoryDAO().setLatestInventory(toRegion, toInventoryId, totalItems + totalAdded);
                 buffer(toRegion, newItems, config);
+                bufferPriceQuantity(toRegion, quantityZero);
                 if (moreToken != null) {
                     moreToken = identifiedMoreToken;
                 }
@@ -114,12 +141,79 @@ public class ListingCopier {
                 dos = null;
                 submitToAmazon(feedFile, md5);
             }
+            if (pqFileStream != null) {
+                pqFileStream.flush();
+                byte[] md5 = pqFileStream.getMessageDigest().digest();
+                pqFileStream.close();
+                rowsWritten = 0;
+                pqFileStream = null;
+                pqFiles.add(new Pair<String, String>(pqFeedFile, new String(Base64.encodeBase64(md5), "UTF-8")));
+                submitToAmazon();
+            }
+        }
+    }
+
+    private void submitToAmazon() throws Exception {
+        boolean completed = false;
+        int consecutive = 0;
+        RepricerConfiguration config = new RepricerConfigurationDAO().getRepricer(toRegion);
+        AmazonAccessor amazonAccessor = new AmazonAccessor(toRegion, config.getMarketplaceId(), config.getSellerId());
+        do {
+            try {
+                completed = amazonAccessor.isSubmissionProcessed(submissionIds);
+                consecutive = 0;
+            } catch (Exception e) {
+                consecutive++;
+                if (consecutive > 100) {
+                    throw new Exception("Consecutive errors while trying to submit feed to Amazon." + pqFiles, e);
+                }
+                log.error("Error checking submission", e);
+            }
+            log.info("Waiting for " + submissionIds + " to complete.");
+            Thread.sleep(10000);
+        } while (completed == false);
+        for (Pair<String, String> pq : pqFiles) {
+            int retry = 0;
+            completed = false;
+            do {
+                try {
+                    log.info("Submitting feed with quantity " + pq.getFirst());
+                    amazonAccessor.sendFeed(pq.getFirst(), pq.getSecond());
+                    log.info("Submitted feed with quantity " + pq.getFirst());
+                    completed = true;
+                } catch (Exception e) {
+                    log.error("Unable to send feed to Amazon " + pq, e);
+                }
+            } while (!completed && retry++ < 3);
+        }
+    }
+
+    private void bufferPriceQuantity(String region, List<PriceQuantityFeed> quantityZero) throws Exception {
+        if (pqFileStream == null) {
+            pqFeedFile = directory + "QuantityZero-PriceQuantityFeed-" + toRegion + "-" + System.currentTimeMillis();
+            BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(pqFeedFile));
+            pqFileStream = new DigestOutputStream(bos, MessageDigest.getInstance("MD5"));
+            byte[] header = (PriceQuantityFeed.getHeader() + "\n").getBytes();
+            pqFileStream.write(header);
+            pqFileStream.flush();
+            rowsWritten = 1;
+        }
+        for (PriceQuantityFeed item : quantityZero) {
+            String row = item.toString() + "\n";
+            pqFileStream.write(row.getBytes());
+            rowsWritten++;
+        }
+        pqFileStream.flush();
+        if (rowsWritten > 50000) {
+            byte[] md5 = pqFileStream.getMessageDigest().digest();
+            pqFileStream.close();
+            rowsWritten = 0;
+            pqFileStream = null;
+            pqFiles.add(new Pair<String, String>(pqFeedFile, new String(Base64.encodeBase64(md5), "UTF-8")));
         }
     }
 
     private void buffer(String toRegion, List<InventoryFeedItem> items, ListingConfiguration config) throws Exception {
-        String TAB = "\t";
-        String NEWLINE = "\n";
         if (dos == null) {
             feedFile = directory + "InventoryLoader-" + toRegion + "-" + System.currentTimeMillis();
             BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(feedFile));
@@ -152,7 +246,7 @@ public class ListingCopier {
                     listing += PriceUtils.getPrice(item.getPrice(), toRegion) + TAB;
                 }
                 if (param.equals("quantity")) {
-                    listing += item.getQuantity() + TAB;
+                    listing += "1" + TAB;
                 }
                 if (param.equals("item-note")) {
                     if (item.getCondition() == 11) {
@@ -221,6 +315,8 @@ public class ListingCopier {
         private String md5;
         private String region;
 
+        private String submissionId;
+
         public FeedSubmitter(final String feedFile, final String md5, final String region) {
             this.feedFile = feedFile;
             this.md5 = md5;
@@ -235,6 +331,7 @@ public class ListingCopier {
                         config.getSellerId());
                 log.info("Submitting inventoryFeed " + feedFile + " to amazon.");
                 String id = amazonAccessor.sendInventoryLoaderFeed(feedFile, md5);
+                submissionIds.add(id);
                 log.info("Submitted " + feedFile + " to amazon, submission id: " + id);
             } catch (Exception e) {
                 log.error("Error processing the feed file", e);

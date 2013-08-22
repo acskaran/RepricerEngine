@@ -12,6 +12,8 @@ public class CreateListingsCommand extends Command {
     private String region;
 
     private String fileUrl;
+    
+    private boolean continueCreateListing = false;
 
     public CreateListingsCommand(int id, String metadata, Date date) {
         super(id, date);
@@ -20,8 +22,11 @@ public class CreateListingsCommand extends Command {
             if (md.startsWith("Region=")) {
                 this.region = md.substring("Region=".length());
             }
-            if (md.startsWith("File")) {
+            if (md.startsWith("File=")) {
                 this.fileUrl = md.substring("File=".length());
+            }
+            if (md.startsWith("Continue=")) {
+                this.continueCreateListing = true;
             }
         }
     }
@@ -29,9 +34,9 @@ public class CreateListingsCommand extends Command {
     @Override
     public void execute() {
         if (fileUrl == null || fileUrl == "") {
-            RepricerMainThreadPool.getInstance().submit(new CreateListingsAsyncCommand(getCommandId(), region));
+            RepricerMainThreadPool.getInstance().submit(new CreateListingsAsyncCommand(getCommandId(), region, this.continueCreateListing));
         } else {
-            RepricerMainThreadPool.getInstance().submit(new CreateListingsAsyncCommand(getCommandId(), region, fileUrl));
+            RepricerMainThreadPool.getInstance().submit(new CreateListingsAsyncCommand(getCommandId(), region, fileUrl, this.continueCreateListing));
         }
     }
 
