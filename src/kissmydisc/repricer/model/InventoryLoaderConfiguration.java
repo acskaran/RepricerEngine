@@ -3,7 +3,9 @@ package kissmydisc.repricer.model;
 import java.util.HashMap;
 import java.util.Map;
 
-public class ListingConfiguration {
+import kissmydisc.repricer.utils.Constants;
+
+public class InventoryLoaderConfiguration {
     private String region;
     private String itemNoteNew;
     private String itemNoteUsed;
@@ -12,9 +14,8 @@ public class ListingConfiguration {
     private String expeditedShipping;
     private String itemIsMarketplace;
 
-    private static final String TAB = "\t";
-
-    private static final String NEWLINE = "\n";
+    private int quantity;
+    private String addDelete;
 
     public String getWillShipInternationally() {
         return willShipInternationally;
@@ -78,7 +79,7 @@ public class ListingConfiguration {
         String header = "";
         for (int i = 1; i < 9; i++) {
             if (i != 1) {
-                header += TAB;
+                header += Constants.TAB;
             }
             header += map.get(i);
         }
@@ -96,7 +97,7 @@ public class ListingConfiguration {
                 value = expeditedShipping;
             }
             if (value != null) {
-                header += TAB + heading;
+                header += Constants.TAB + heading;
             }
         }
         header = header.trim();
@@ -108,6 +109,22 @@ public class ListingConfiguration {
             return map.get(iter);
         }
         return null;
+    }
+
+    public int getQuantity() {
+        return quantity;
+    }
+
+    public void setQuantity(int quantity) {
+        this.quantity = quantity;
+    }
+
+    public String getAddDelete() {
+        return addDelete;
+    }
+
+    public void setAddDelete(String addDelete) {
+        this.addDelete = addDelete;
     }
 
     static {

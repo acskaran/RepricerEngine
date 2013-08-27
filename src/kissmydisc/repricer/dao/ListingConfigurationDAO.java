@@ -5,15 +5,15 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 
-import kissmydisc.repricer.model.ListingConfiguration;
+import kissmydisc.repricer.model.InventoryLoaderConfiguration;
 
 public class ListingConfigurationDAO extends DBAccessor {
     public ListingConfigurationDAO() {
         super();
     }
 
-    public ListingConfiguration getListingConfiguration(String region) throws DBException {
-        ListingConfiguration config = null;
+    public InventoryLoaderConfiguration getListingConfiguration(String region) throws DBException {
+        InventoryLoaderConfiguration config = null;
         String query = "select * from listing_configuration where region = ?";
         PreparedStatement st = null;
         Connection conn = null;
@@ -24,7 +24,7 @@ public class ListingConfigurationDAO extends DBAccessor {
             st.setString(1, region);
             rs = st.executeQuery();
             if (rs.next()) {
-                config = new ListingConfiguration();
+                config = new InventoryLoaderConfiguration();
                 config.setExpeditedShipping(rs.getString("EXPEDITED_SHIPPING"));
                 config.setItemIsMarketplace(rs.getString("ITEM_IS_MARKETPLACE"));
                 config.setItemNoteNew(rs.getString("ITEM_NOTE_NEW"));

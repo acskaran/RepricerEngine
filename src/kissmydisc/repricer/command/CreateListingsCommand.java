@@ -3,9 +3,6 @@ package kissmydisc.repricer.command;
 import java.util.Date;
 
 import kissmydisc.repricer.RepricerMainThreadPool;
-import kissmydisc.repricer.dao.CommandDAO;
-import kissmydisc.repricer.engine.CreateListingsWorker;
-import kissmydisc.repricer.engine.RepricerEngine;
 
 public class CreateListingsCommand extends Command {
 

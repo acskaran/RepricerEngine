@@ -1,6 +1,7 @@
-package kissmydisc.repricer.model;
+package kissmydisc.repricer.feeds;
 
-public class PriceQuantityFeed {
+
+public class PriceQuantityFeed implements AmazonFeed {
     private String sku;
     private float price;
     private int quantity;

@@ -6,6 +6,7 @@ import java.io.UnsupportedEncodingException;
 import java.security.DigestOutputStream;
 import java.security.MessageDigest;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
@@ -17,7 +18,9 @@ import org.apache.commons.codec.binary.Base64;
 import kissmydisc.repricer.dao.AmazonAccessor;
 import kissmydisc.repricer.dao.FeedsDAO;
 import kissmydisc.repricer.dao.KMDInventoryDAO;
-import kissmydisc.repricer.model.PriceQuantityFeed;
+import kissmydisc.repricer.feeds.AmazonFeed;
+import kissmydisc.repricer.feeds.PriceQuantityFeed;
+import kissmydisc.repricer.model.AmazonSubmission;
 import kissmydisc.repricer.utils.AppConfig;
 
 public class KMDRepriceFeedManager implements RepriceFeedManager {
@@ -38,18 +41,21 @@ public class KMDRepriceFeedManager implements RepriceFeedManager {
     private static final org.apache.commons.logging.Log log = org.apache.commons.logging.LogFactory
             .getLog(AmazonRepriceFeedManager.class);
 
-    public synchronized void writeToFeedFile(PriceQuantityFeed feed) throws Exception {
-        if (feed.getPrice() < 0 && feed.getQuantity() < 0) {
-            // Some error in feed, drop it.
-            return;
-        }
-        if (feeds.size() < MAX_ITEMS) {
-            feeds.add(feed);
-        }
-        if (feeds.size() == MAX_ITEMS) {
-            log.info("Writing feeds to KMD Database");
-            new KMDInventoryDAO().updateKMDPrice(feeds);
-            feeds = new ArrayList<PriceQuantityFeed>();
+    public synchronized void writeToFeedFile(AmazonFeed amzFeed) throws Exception {
+        if (amzFeed instanceof PriceQuantityFeed) {
+            PriceQuantityFeed feed = (PriceQuantityFeed) amzFeed;
+            if (feed.getPrice() < 0 && feed.getQuantity() < 0) {
+                // Some error in feed, drop it.
+                return;
+            }
+            if (feeds.size() < MAX_ITEMS) {
+                feeds.add(feed);
+            }
+            if (feeds.size() >= MAX_ITEMS) {
+                log.info("Writing feeds to KMD Database");
+                new KMDInventoryDAO().updateKMDPrice(feeds);
+                feeds = new ArrayList<PriceQuantityFeed>();
+            }
         }
     }
 
@@ -60,8 +66,10 @@ public class KMDRepriceFeedManager implements RepriceFeedManager {
         }
     }
 
-    public void close() {
-        // Do nothing here.
+    @Override
+    public List<AmazonSubmission> getSubmissions() {
+        // TODO Auto-generated method stub
+        return Collections.emptyList();
     }
 
 }

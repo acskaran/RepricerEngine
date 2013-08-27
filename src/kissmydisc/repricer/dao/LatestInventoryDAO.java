@@ -47,7 +47,7 @@ public class LatestInventoryDAO extends DBAccessor {
         }
     }
 
-    public Pair<Long, Long> getLatestInventoryWithCount(final String region) throws DBException {
+    public Pair<Long, Pair<Long, Long>> getLatestInventoryWithCountAndId(final String region) throws DBException {
         String selectQuery = "select * from latest_inventory where region = ?";
         PreparedStatement st = null;
         Connection conn = null;
@@ -59,8 +59,9 @@ public class LatestInventoryDAO extends DBAccessor {
             rs = st.executeQuery();
             if (rs.next()) {
                 long inventoryId = rs.getLong("INVENTORY_ID");
+                long id = rs.getLong("latest_used_id");
                 long count = rs.getLong("total_items");
-                return new Pair<Long, Long>(inventoryId, count);
+                return new Pair<Long, Pair<Long, Long>>(inventoryId, new Pair<Long, Long>(id, count));
             } else {
                 return null;
             }
@@ -106,10 +107,30 @@ public class LatestInventoryDAO extends DBAccessor {
             int rows = st.executeUpdate();
             if (rows == 0) {
                 insertLatestInventory(region, inventoryId, count);
-            } else {
-                log.debug(rows + " rows updated with inventoryId = " + inventoryId);
             }
+        } catch (SQLException e) {
+            throw new DBException(e);
+        } finally {
+            releaseStatement(st);
+            releaseConnection();
+        }
+    }
 
+    public void updateLatestInventory(String region, long inventoryId, long count, long id) throws Exception {
+        String updateQuery = "update latest_inventory set INVENTORY_ID = ?, TOTAL_ITEMS = ?, LATEST_USED_ID = ? where region = ?";
+        PreparedStatement st = null;
+        Connection conn = null;
+        try {
+            conn = getConnection();
+            st = conn.prepareStatement(updateQuery);
+            st.setLong(1, inventoryId);
+            st.setLong(2, count);
+            st.setLong(3, id);
+            st.setString(4, region);
+            int rows = st.executeUpdate();
+            if (rows == 0) {
+                insertLatestInventory(region, inventoryId, count);
+            }
         } catch (SQLException e) {
             throw new DBException(e);
         } finally {

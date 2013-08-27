@@ -1,12 +1,7 @@
 package kissmydisc.repricer.command;
 
 import java.io.BufferedOutputStream;
-import java.io.BufferedWriter;
-import java.io.FileInputStream;
 import java.io.FileOutputStream;
-import java.util.ArrayList;
-import java.util.Calendar;
-import java.util.Date;
 import java.util.List;
 
 import org.apache.commons.logging.Log;
@@ -14,7 +9,6 @@ import org.apache.commons.logging.LogFactory;
 
 import kissmydisc.repricer.dao.CommandDAO;
 import kissmydisc.repricer.dao.CreateListingStatusDAO;
-import kissmydisc.repricer.dao.DBException;
 import kissmydisc.repricer.dao.InventoryItemDAO;
 import kissmydisc.repricer.dao.LatestInventoryDAO;
 import kissmydisc.repricer.dao.ListingConfigurationDAO;
@@ -22,7 +16,7 @@ import kissmydisc.repricer.dao.RepricerConfigurationDAO;
 import kissmydisc.repricer.dao.RepricerStatusReportDAO;
 import kissmydisc.repricer.engine.CreateListingsWorker;
 import kissmydisc.repricer.model.InventoryFeedItem;
-import kissmydisc.repricer.model.ListingConfiguration;
+import kissmydisc.repricer.model.InventoryLoaderConfiguration;
 import kissmydisc.repricer.model.RepricerConfiguration;
 import kissmydisc.repricer.model.RepricerStatus;
 import kissmydisc.repricer.utils.AppConfig;
@@ -130,12 +124,13 @@ public class CreateListingsAsyncCommand implements Runnable {
         InventoryItemDAO inventoryDAO = new InventoryItemDAO();
         int limit = 1000;
         String moreToken = null;
-        Pair<Long, Long> latestInventory = new LatestInventoryDAO().getLatestInventoryWithCount(fromRegion);
+        Pair<Long, Pair<Long, Long>> latestInventory = new LatestInventoryDAO()
+                .getLatestInventoryWithCountAndId(fromRegion);
         Pair<List<InventoryFeedItem>, String> itemsAndMoreToken = inventoryDAO.getMatchingItems(
                 latestInventory.getFirst(), fromRegion, moreToken, limit);
         moreToken = itemsAndMoreToken.getSecond();
         List<InventoryFeedItem> items = itemsAndMoreToken.getFirst();
-        ListingConfiguration config = new ListingConfigurationDAO().getListingConfiguration(toRegion);
+        InventoryLoaderConfiguration config = new ListingConfigurationDAO().getListingConfiguration(toRegion);
         String TAB = "\t";
         String NEWLINE = "\n";
         String previewFile = AppConfig.getString("PreviewFileLocation");

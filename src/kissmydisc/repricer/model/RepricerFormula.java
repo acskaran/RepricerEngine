@@ -15,6 +15,7 @@ public class RepricerFormula {
     private double lowerPriceMarigin;
     private String obiFormula;
     private int obiQuantityLimit;
+    private int newQuantityLimit;
 
     public String getInitialFormula() {
         return initialFormula;
@@ -26,6 +27,10 @@ public class RepricerFormula {
 
     public int getQuantityLimit() {
         return quantityLimit;
+    }
+
+    public int getNewQuantityLimit() {
+        return newQuantityLimit;
     }
 
     public void setQuantityLimit(int quantityLimit) {
@@ -122,7 +127,7 @@ public class RepricerFormula {
                 + ", secondLevelRepricingLowerLimit=" + secondLevelRepricingLowerLimit
                 + ", secondLevelRepricingLowerLimitPercent=" + secondLevelRepricingLowerLimitPercent
                 + ", lowerPriceMarigin=" + lowerPriceMarigin + ", obiFormula=" + obiFormula + ", obiQuantityLimit="
-                + obiQuantityLimit + "]";
+                + obiQuantityLimit + ", newQuantityLimit=" + newQuantityLimit + "]";
     }
 
     public double getDefaultWeight() {
@@ -139,5 +144,9 @@ public class RepricerFormula {
 
     public void setDefaultObiWeight(double defaultObiWeight) {
         this.defaultObiWeight = defaultObiWeight;
+    }
+
+    public void setQuantityLimitNew(int qtyLimit) {
+        this.newQuantityLimit = qtyLimit;
     }
 }

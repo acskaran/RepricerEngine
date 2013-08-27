@@ -3,7 +3,7 @@
 -- Server version:               5.5.27 - MySQL Community Server (GPL)
 -- Server OS:                    Win32
 -- HeidiSQL version:             7.0.0.4053
--- Date/time:                    2013-05-22 14:49:45
+-- Date/time:                    2013-08-28 01:58:56
 -- --------------------------------------------------------
 
 /*!40101 SET @OLD_CHARACTER_SET_CLIENT=@@CHARACTER_SET_CLIENT */;
@@ -26,6 +26,16 @@ CREATE TABLE IF NOT EXISTS `asin_associations` (
 -- Data exporting was unselected.
 
 
+-- Dumping structure for table repricer.catalog
+CREATE TABLE IF NOT EXISTS `catalog` (
+  `sku` varchar(50) DEFAULT NULL,
+  `price` float DEFAULT NULL,
+  `quantity` int(11) DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+
+-- Data exporting was unselected.
+
+
 -- Dumping structure for table repricer.commands
 CREATE TABLE IF NOT EXISTS `commands` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
@@ -35,6 +45,31 @@ CREATE TABLE IF NOT EXISTS `commands` (
   `date` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   KEY `status` (`status`)
+) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+
+-- Data exporting was unselected.
+
+
+-- Dumping structure for table repricer.create_listing_status
+CREATE TABLE IF NOT EXISTS `create_listing_status` (
+  `region` varchar(50) NOT NULL,
+  `stage` varchar(50) DEFAULT NULL,
+  `status` varchar(50) NOT NULL,
+  `started_time` time DEFAULT NULL,
+  `end_time` time DEFAULT NULL,
+  PRIMARY KEY (`region`)
+) ENGINE=InnoDB DEFAULT CHARSET=latin1;
+
+-- Data exporting was unselected.
+
+
+-- Dumping structure for table repricer.exchange_rates
+CREATE TABLE IF NOT EXISTS `exchange_rates` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `from_currency` varchar(50) NOT NULL,
+  `to_currency` varchar(50) NOT NULL,
+  `factor` float NOT NULL,
+  PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1;
 
 -- Data exporting was unselected.
@@ -79,6 +114,7 @@ CREATE TABLE IF NOT EXISTS `inventory_items` (
   `item_condition` int(10) NOT NULL,
   `lowest_amazon_price` float DEFAULT NULL,
   `obi` bit(1) DEFAULT NULL,
+  `is_valid` bit(1) DEFAULT NULL,
   PRIMARY KEY (`id`),
   KEY `inventory_id_region_product` (`inventory_id`,`region_product`),
   KEY `sku` (`sku`),
@@ -94,8 +130,24 @@ CREATE TABLE IF NOT EXISTS `latest_inventory` (
   `region` varchar(10) NOT NULL,
   `inventory_id` int(20) NOT NULL,
   `total_items` int(10) DEFAULT NULL,
+  `latest_used_id` int(10) DEFAULT NULL,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=latin1 MAX_ROWS=1;
+
+-- Data exporting was unselected.
+
+
+-- Dumping structure for table repricer.listing_configuration
+CREATE TABLE IF NOT EXISTS `listing_configuration` (
+  `region` varchar(50) NOT NULL,
+  `item_note_new` varchar(1000) NOT NULL,
+  `item_note_used` varchar(1000) NOT NULL,
+  `item_note_obi` varchar(1000) NOT NULL,
+  `expedited_shipping` varchar(10) DEFAULT NULL,
+  `item_is_marketplace` varchar(10) DEFAULT NULL,
+  `will_ship_internationally` varchar(10) DEFAULT NULL,
+  PRIMARY KEY (`region`)
+) ENGINE=InnoDB DEFAULT CHARSET=latin1;
 
 -- Data exporting was unselected.
 
@@ -146,6 +198,7 @@ CREATE TABLE IF NOT EXISTS `repricer_configuration` (
 CREATE TABLE IF NOT EXISTS `repricer_formula` (
   `formula_id` int(10) NOT NULL AUTO_INCREMENT,
   `quantity_limit` int(10) NOT NULL,
+  `new_quantity_limit` int(10) DEFAULT '0',
   `obi_quantity_limit` int(10) NOT NULL,
   `formula` varchar(100) NOT NULL,
   `obi_formula` varchar(100) NOT NULL,

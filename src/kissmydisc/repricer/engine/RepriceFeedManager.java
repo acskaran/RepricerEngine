@@ -1,12 +1,15 @@
 package kissmydisc.repricer.engine;
 
-import java.util.ArrayList;
+import java.util.List;
 
-import kissmydisc.repricer.model.PriceQuantityFeed;
+import kissmydisc.repricer.feeds.AmazonFeed;
+import kissmydisc.repricer.model.AmazonSubmission;
 
 public interface RepriceFeedManager {
-    public void writeToFeedFile(PriceQuantityFeed feed) throws Exception;
+
+    public void writeToFeedFile(AmazonFeed feed) throws Exception;
+
     public void flush() throws Exception;
-    public void close() throws Exception;
-    
+
+    public List<AmazonSubmission> getSubmissions();
 }

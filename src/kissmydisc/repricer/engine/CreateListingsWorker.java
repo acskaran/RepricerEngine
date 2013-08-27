@@ -79,7 +79,8 @@ public class CreateListingsWorker {
     public void createListingsFromFile() throws Exception {
         String filePath = "downloads/" + System.currentTimeMillis();
         downloadFile(fileUrl, filePath);
-        Pair<Long, Long> latestInventory = new LatestInventoryDAO().getLatestInventoryWithCount(region);
+        Pair<Long, Pair<Long, Long>> latestInventory = new LatestInventoryDAO()
+                .getLatestInventoryWithCountAndId(region);
         BufferedReader reader = new BufferedReader(new InputStreamReader(new FileInputStream(filePath)));
         Map<String, List<Integer>> availabilityMap = new HashMap<String, List<Integer>>();
         long newInventoryId = System.currentTimeMillis() / 1000;
@@ -95,14 +96,16 @@ public class CreateListingsWorker {
                     List<Integer> availability = new ArrayList<Integer>();
                     if (items != null) {
                         for (InventoryFeedItem item : items) {
-                            if (item.getCondition() == 11) {
-                                availability.add(NEW);
-                            }
-                            if (item.getCondition() < 11) {
-                                if (item.getObiItem()) {
-                                    availability.add(OBI);
-                                } else {
-                                    availability.add(USED);
+                            if (item.isValid()) {
+                                if (item.getCondition() == 11) {
+                                    availability.add(NEW);
+                                }
+                                if (item.getCondition() < 11) {
+                                    if (item.getObiItem()) {
+                                        availability.add(OBI);
+                                    } else {
+                                        availability.add(USED);
+                                    }
                                 }
                             }
                         }
@@ -132,7 +135,8 @@ public class CreateListingsWorker {
         InventoryItemDAO inventoryDAO = new InventoryItemDAO();
         int limit = 500;
         String moreToken = null;
-        Pair<Long, Long> latestInventory = new LatestInventoryDAO().getLatestInventoryWithCount(region);
+        Pair<Long, Pair<Long, Long>> latestInventory = new LatestInventoryDAO()
+                .getLatestInventoryWithCountAndId(region);
         String identifiedMoreToken = null;
         String lastProcessed = null;
         long newInventoryId = System.currentTimeMillis() / 1000;
@@ -144,17 +148,19 @@ public class CreateListingsWorker {
             List<InventoryFeedItem> items = itemsAndMoreToken.getFirst();
             Map<String, List<Integer>> availabilityMap = new HashMap<String, List<Integer>>();
             for (InventoryFeedItem item : items) {
-                if (!availabilityMap.containsKey(item.getProductId())) {
-                    availabilityMap.put(item.getProductId(), new ArrayList<Integer>());
-                }
-                int condition = NEW;
-                if (item.getCondition() < 11) {
-                    condition = USED;
-                    if (item.getObiItem()) {
-                        condition = OBI;
+                if (item.isValid()) {
+                    if (!availabilityMap.containsKey(item.getProductId())) {
+                        availabilityMap.put(item.getProductId(), new ArrayList<Integer>());
                     }
+                    int condition = NEW;
+                    if (item.getCondition() < 11) {
+                        condition = USED;
+                        if (item.getObiItem()) {
+                            condition = OBI;
+                        }
+                    }
+                    availabilityMap.get(item.getProductId()).add(condition);
                 }
-                availabilityMap.get(item.getProductId()).add(condition);
                 if (lastProcessed != item.getRegionProductId()) {
                     identifiedMoreToken = lastProcessed;
                 }
@@ -179,7 +185,7 @@ public class CreateListingsWorker {
             InventoryFeedItem item = new InventoryFeedItem();
             item.setInventoryId(newInventoryId);
             item.setObiItem(false);
-            item.setPrice(1.0F);
+            item.setPrice(20000.0F);
             item.setQuantity(0);
             item.setProductId(asin);
             item.setRegionProductId("N-" + region + "_" + asin);

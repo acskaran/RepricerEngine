@@ -11,7 +11,7 @@ public class RepricerMainThreadPool {
     private ThreadPoolExecutor executor;
 
     private RepricerMainThreadPool() {
-        executor = new ThreadPoolExecutor(10, 10, 1L, TimeUnit.HOURS, new ArrayBlockingQueue<Runnable>(100));
+        executor = new ThreadPoolExecutor(10, 20, 1L, TimeUnit.HOURS, new ArrayBlockingQueue<Runnable>(100));
     }
 
     public static RepricerMainThreadPool getInstance() {

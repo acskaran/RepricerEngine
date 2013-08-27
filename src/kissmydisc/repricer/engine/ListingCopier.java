@@ -22,9 +22,9 @@ import kissmydisc.repricer.dao.InventoryItemDAO;
 import kissmydisc.repricer.dao.LatestInventoryDAO;
 import kissmydisc.repricer.dao.ListingConfigurationDAO;
 import kissmydisc.repricer.dao.RepricerConfigurationDAO;
+import kissmydisc.repricer.feeds.PriceQuantityFeed;
 import kissmydisc.repricer.model.InventoryFeedItem;
-import kissmydisc.repricer.model.ListingConfiguration;
-import kissmydisc.repricer.model.PriceQuantityFeed;
+import kissmydisc.repricer.model.InventoryLoaderConfiguration;
 import kissmydisc.repricer.model.RepricerConfiguration;
 import kissmydisc.repricer.utils.AppConfig;
 import kissmydisc.repricer.utils.Pair;
@@ -69,15 +69,20 @@ public class ListingCopier {
         InventoryItemDAO inventoryDAO = new InventoryItemDAO();
         int limit = 100;
         String moreToken = null;
-        Pair<Long, Long> latestInventory = new LatestInventoryDAO().getLatestInventoryWithCount(fromRegion);
+        Pair<Long, Pair<Long, Long>> latestInventory = new LatestInventoryDAO()
+                .getLatestInventoryWithCountAndId(fromRegion);
         int totalAdded = 0;
         String identifiedMoreToken = null;
         String lastProcessed = null;
-        Pair<Long, Long> inventoryDetails = new LatestInventoryDAO().getLatestInventoryWithCount(toRegion);
+        Pair<Long, Pair<Long, Long>> inventoryDetails = new LatestInventoryDAO()
+                .getLatestInventoryWithCountAndId(toRegion);
         long toInventoryId = inventoryDetails.getFirst();
-        long totalItems = inventoryDetails.getSecond();
-        long id = totalItems + 1;
-        ListingConfiguration config = new ListingConfigurationDAO().getListingConfiguration(toRegion);
+        long totalItems = inventoryDetails.getSecond().getSecond();
+        long id = inventoryDetails.getSecond().getFirst() + 1;
+        InventoryLoaderConfiguration config = new ListingConfigurationDAO().getListingConfiguration(toRegion);
+        // Adding other details
+        config.setQuantity(1);
+        config.setAddDelete("a");
         Map<String, Boolean> doneLastIteration = new HashMap<String, Boolean>();
         try {
             do {
@@ -124,6 +129,7 @@ public class ListingCopier {
                 }
                 doneLastIteration = doneThisIteration;
                 totalAdded += newItems.size();
+                new LatestInventoryDAO().updateLatestInventory(toRegion, toInventoryId, totalItems, id);
                 new InventoryItemDAO().addItems(newItems);
                 new LatestInventoryDAO().setLatestInventory(toRegion, toInventoryId, totalItems + totalAdded);
                 buffer(toRegion, newItems, config);
@@ -213,7 +219,8 @@ public class ListingCopier {
         }
     }
 
-    private void buffer(String toRegion, List<InventoryFeedItem> items, ListingConfiguration config) throws Exception {
+    private void buffer(String toRegion, List<InventoryFeedItem> items, InventoryLoaderConfiguration config)
+            throws Exception {
         if (dos == null) {
             feedFile = directory + "InventoryLoader-" + toRegion + "-" + System.currentTimeMillis();
             BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(feedFile));

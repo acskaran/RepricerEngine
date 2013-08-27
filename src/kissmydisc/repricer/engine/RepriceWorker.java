@@ -25,8 +25,8 @@ import kissmydisc.repricer.dao.ProductDAO;
 import kissmydisc.repricer.dao.RepriceReportDAO;
 import kissmydisc.repricer.dao.RepricerConfigurationDAO;
 import kissmydisc.repricer.dao.RepricerStatusReportDAO;
+import kissmydisc.repricer.feeds.PriceQuantityFeed;
 import kissmydisc.repricer.model.InventoryFeedItem;
-import kissmydisc.repricer.model.PriceQuantityFeed;
 import kissmydisc.repricer.model.ProductDetails;
 import kissmydisc.repricer.model.RepriceReport;
 import kissmydisc.repricer.model.RepricerConfiguration;
@@ -135,12 +135,11 @@ public class RepriceWorker implements Runnable {
                         feedManager = new KMDRepriceFeedManager(status.getRepriceId());
                     } else {
                         feedManager = new AmazonRepriceFeedManager(status.getRepriceId(), currentConfig.getRegion(),
-                                amazonAccessor);
+                                amazonAccessor, false);
                     }
                     configDAO.setStatus(currentConfig.getRegion(), "RUNNING", status.getRepriceId());
                     int retVal = processRegion(currentConfig);
                     feedManager.flush();
-                    feedManager.close();
                     executor.shutdown();
                     if (retVal == 0) {
                         if (currentConfig.getInterval() < 0 || region.startsWith("N-")) {
@@ -179,7 +178,6 @@ public class RepriceWorker implements Runnable {
                 } catch (Exception e) {
                     log.error("Error flushing data to Amazon.", e);
                 }
-                feedManager.close();
                 if (executor != null) {
                     executor.shutdownNow();
                 }
@@ -200,11 +198,6 @@ public class RepriceWorker implements Runnable {
                     feedManager.flush();
                 } catch (Exception e) {
                     log.error("Error flushing data.", e);
-                }
-                try {
-                    feedManager.close();
-                } catch (Exception e) {
-
                 }
             }
         }
@@ -242,34 +235,37 @@ public class RepriceWorker implements Runnable {
                     }
                     Map<String, ProductDetails> details = new ProductDAO().getProductDetails(productIds);
                     for (InventoryFeedItem item : toProcess) {
-                        boolean shouldCache = true;
-                        if (details != null && details.containsKey(item.getProductId())) {
-                            ProductDetails detail = details.get(item.getProductId());
-                            if (detail.getLastUpdated() != null) {
-                                if (cacheInterval >= 0
-                                        && detail.getLastUpdated().after(
-                                                new Date(System.currentTimeMillis() - cacheInterval))) {
-                                    shouldCache = false;
+                        if (item.isValid()) {
+                            boolean shouldCache = true;
+                            if (details != null && details.containsKey(item.getProductId())) {
+                                ProductDetails detail = details.get(item.getProductId());
+                                if (detail.getLastUpdated() != null) {
+                                    if (cacheInterval >= 0
+                                            && detail.getLastUpdated().after(
+                                                    new Date(System.currentTimeMillis() - cacheInterval))) {
+                                        shouldCache = false;
+                                    }
                                 }
                             }
-                        }
-                        List<InventoryFeedItem> toProcessTemp = null;
-                        item.setItemNo(itemNo++);
-                        if (shouldCache) {
-                            toProcessAndCache.add(item);
-                            toProcessTemp = toProcessAndCache;
-                        } else {
-                            toProcessCached.add(item);
-                            toProcessTemp = toProcessCached;
-                        }
-                        if (toProcessTemp.size() == BATCH_SIZE) {
-                            status.addScheduled(toProcessTemp.size());
-                            executor.execute(new WorkerThreadInternational(toProcessTemp, currentConfig, feedManager));
-                            submittedTasks++;
+                            List<InventoryFeedItem> toProcessTemp = null;
+                            item.setItemNo(itemNo++);
                             if (shouldCache) {
-                                toProcessAndCache = new ArrayList<InventoryFeedItem>();
+                                toProcessAndCache.add(item);
+                                toProcessTemp = toProcessAndCache;
                             } else {
-                                toProcessCached = new ArrayList<InventoryFeedItem>();
+                                toProcessCached.add(item);
+                                toProcessTemp = toProcessCached;
+                            }
+                            if (toProcessTemp.size() == BATCH_SIZE) {
+                                status.addScheduled(toProcessTemp.size());
+                                executor.execute(new WorkerThreadInternational(toProcessTemp, currentConfig,
+                                        feedManager));
+                                submittedTasks++;
+                                if (shouldCache) {
+                                    toProcessAndCache = new ArrayList<InventoryFeedItem>();
+                                } else {
+                                    toProcessCached = new ArrayList<InventoryFeedItem>();
+                                }
                             }
                         }
                     }
@@ -415,8 +411,13 @@ public class RepriceWorker implements Runnable {
                         double currentPrice = item.getPrice();
                         int currentQuantity = item.getQuantity();
 
-                        int qtyLimit = (item.getObiItem() ? config.getFormula().getObiQuantityLimit() : config
-                                .getFormula().getQuantityLimit());
+                        int qtyLimit = config.getFormula().getQuantityLimit();
+                        if (item.getObiItem()) {
+                            qtyLimit = config.getFormula().getObiQuantityLimit();
+                        }
+                        if (item.getCondition() == 11) {
+                            qtyLimit = config.getFormula().getNewQuantityLimit();
+                        }
 
                         if (reprice && ajpQuantity >= 0 && ajpQuantity < qtyLimit) {
                             reprice = false;

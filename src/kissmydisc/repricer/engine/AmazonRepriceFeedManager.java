@@ -17,9 +17,12 @@ import java.util.concurrent.TimeUnit;
 
 import org.apache.commons.codec.binary.Base64;
 
+import kissmydisc.repricer.RepricerMainThreadPool;
 import kissmydisc.repricer.dao.AmazonAccessor;
 import kissmydisc.repricer.dao.FeedsDAO;
-import kissmydisc.repricer.model.PriceQuantityFeed;
+import kissmydisc.repricer.feeds.AmazonFeed;
+import kissmydisc.repricer.feeds.PriceQuantityFeed;
+import kissmydisc.repricer.model.AmazonSubmission;
 import kissmydisc.repricer.utils.AppConfig;
 
 public class AmazonRepriceFeedManager implements RepriceFeedManager {
@@ -34,15 +37,9 @@ public class AmazonRepriceFeedManager implements RepriceFeedManager {
 
     private static final int MAX_ITEMS = AppConfig.getInteger("MaxItemsPerAmazonFeed", 30000);
 
-    private static final int MAX_ITEMS_TO_BUFFER = MAX_ITEMS / 10;
-
     private String region;
 
-    private long repriceId;
-
-    private ThreadPoolExecutor executor;
-
-    private BlockingQueue<Runnable> queue;
+    private long id;
 
     private AmazonAccessor amazonAccessor;
 
@@ -50,12 +47,13 @@ public class AmazonRepriceFeedManager implements RepriceFeedManager {
 
     private int MAX_ITEMS_TO_BUFFER_REGION;
 
-    public AmazonRepriceFeedManager(final long repriceId, final String region, final AmazonAccessor amazonAccessor) {
-        this.repriceId = repriceId;
+    private boolean onlyBuffer = false;
+
+    public AmazonRepriceFeedManager(final long id, final String region, final AmazonAccessor amazonAccessor,
+            boolean onlyBuffer) {
+        this.id = id;
         this.region = region;
-        queue = new ArrayBlockingQueue<Runnable>(2000);
         this.amazonAccessor = amazonAccessor;
-        executor = new ThreadPoolExecutor(4, 4, 60, TimeUnit.SECONDS, queue);
         MAX_ITEMS_PER_REGION = AppConfig.getInteger(region + "_MaxItemsPerAmazonFeed", MAX_ITEMS);
         MAX_ITEMS_TO_BUFFER_REGION = Math.min(MAX_ITEMS_PER_REGION / 10, 1000);
     }
@@ -71,16 +69,19 @@ public class AmazonRepriceFeedManager implements RepriceFeedManager {
     private static final org.apache.commons.logging.Log log = org.apache.commons.logging.LogFactory
             .getLog(AmazonRepriceFeedManager.class);
 
-    public synchronized void writeToFeedFile(PriceQuantityFeed feed) throws Exception {
-        if (feed.getPrice() < 0 && feed.getQuantity() < 0) {
-            // Some error in feed, drop it.
-            return;
-        }
-        if (feeds.size() < MAX_ITEMS_TO_BUFFER_REGION) {
-            feeds.add(feed);
-        }
-        if (feeds.size() == MAX_ITEMS_TO_BUFFER_REGION) {
-            writeToFile();
+    public synchronized void writeToFeedFile(AmazonFeed amzFeed) throws Exception {
+        if (amzFeed instanceof PriceQuantityFeed) {
+            PriceQuantityFeed feed = (PriceQuantityFeed) amzFeed;
+            if (feed.getPrice() < 0 && feed.getQuantity() < 0) {
+                // Some error in feed, drop it.
+                return;
+            }
+            if (feeds.size() < MAX_ITEMS_TO_BUFFER_REGION) {
+                feeds.add(feed);
+            }
+            if (feeds.size() == MAX_ITEMS_TO_BUFFER_REGION) {
+                writeToFile();
+            }
         }
     }
 
@@ -94,18 +95,6 @@ public class AmazonRepriceFeedManager implements RepriceFeedManager {
             currentOutputStream = null;
             submitToAmazon(currentFeedFile, md5);
         }
-    }
-
-    public void close() {
-        while (!executor.isTerminated() && executor.getCompletedTaskCount() < submitted) {
-            log.info("Waiting for FeedSubmission to complete [submitted: " + submitted + ", completed: "
-                    + executor.getCompletedTaskCount() + "]");
-            try {
-                Thread.sleep(10000);
-            } catch (InterruptedException e) {
-            }
-        }
-        executor.shutdownNow();
     }
 
     private synchronized void writeToFile() throws Exception {
@@ -145,15 +134,17 @@ public class AmazonRepriceFeedManager implements RepriceFeedManager {
 
     private void submitToAmazon(String feedFile, byte[] md5) {
         // Submit the feed to Amazon in the background.
-        try {
-            String md5Str = new String(Base64.encodeBase64(md5), "UTF-8");
-            if (log.isDebugEnabled()) {
-                log.debug("MD5 of the generated feed file: " + feedFile + " is " + md5Str);
+        if (region.startsWith("N-") == false && !onlyBuffer) {
+            try {
+                String md5Str = new String(Base64.encodeBase64(md5), "UTF-8");
+                if (log.isDebugEnabled()) {
+                    log.debug("MD5 of the generated feed file: " + feedFile + " is " + md5Str);
+                }
+                RepricerMainThreadPool.getInstance().submit(new FeedSubmitter(feedFile, md5Str, region));
+                submitted++;
+            } catch (UnsupportedEncodingException e) {
+                log.error("Unable to submit feeds to amazon", e);
             }
-            executor.submit(new FeedSubmitter(feedFile, md5Str, region));
-            submitted++;
-        } catch (UnsupportedEncodingException e) {
-            log.error("Unable to submit feeds to amazon", e);
         }
     }
 
@@ -161,21 +152,19 @@ public class AmazonRepriceFeedManager implements RepriceFeedManager {
 
         private String feedFile;
         private String md5;
-        private String region;
 
         public FeedSubmitter(final String feedFile, final String md5, final String region) {
             this.feedFile = feedFile;
             this.md5 = md5;
-            this.region = region;
         }
 
         @Override
         public void run() {
             try {
                 log.info("Submitting " + feedFile + " to amazon.");
-                String id = amazonAccessor.sendFeed(feedFile, md5);
-                new FeedsDAO().addNewFeedSubmission(repriceId, feedFile, id);
-                log.info("Submitted " + feedFile + " to amazon, submission id: " + id);
+                String submissionId = amazonAccessor.sendFeed(feedFile, md5);
+                new FeedsDAO().addNewFeedSubmission(id, feedFile, submissionId);
+                log.info("Submitted " + feedFile + " to amazon, submission id: " + submissionId);
             } catch (Exception e) {
                 log.error("Error processing the feed file", e);
             }
@@ -187,5 +176,11 @@ public class AmazonRepriceFeedManager implements RepriceFeedManager {
         System.out.println(Charset.isSupported("UTF8"));
         System.out.println(Charset.isSupported("Shift_JIS"));
         System.out.println(Charset.isSupported("ISO8859-1"));
+    }
+
+    @Override
+    public List<AmazonSubmission> getSubmissions() {
+        // TODO Auto-generated method stub
+        return null;
     }
 }
