@@ -136,4 +136,16 @@ public class InventoryFeedItem {
     public void setValid(boolean valid) {
         this.valid = valid;
     }
+
+    public boolean isNew() {
+        return this.condition == 11;
+    }
+
+    public boolean isUsed() {
+        return this.condition < 11 && this.obiItem == false;
+    }
+
+    public boolean isOBI() {
+        return this.condition < 11 && this.obiItem;
+    }
 }

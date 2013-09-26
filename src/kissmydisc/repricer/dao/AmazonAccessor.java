@@ -10,10 +10,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.UUID;
-import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.ThreadPoolExecutor;
-import java.util.concurrent.TimeUnit;
 
+import kissmydisc.repricer.model.ProductDetail;
 import kissmydisc.repricer.utils.AppConfig;
 import kissmydisc.repricer.utils.Pair;
 
@@ -101,7 +99,7 @@ public class AmazonAccessor {
 
     private static final Log log = LogFactory.getLog(AmazonAccessor.class);
 
-    private static final int GET_WEIGHT_RESTORE_RATE = AppConfig.getInteger("GetWeight.RestoreRate", 2);
+    private static final int GET_WEIGHT_RESTORE_RATE = AppConfig.getInteger("GetWeight.RestoreRate", 5);
 
     private static final int GET_PRICE_RESTORE_RATE = AppConfig.getInteger("GetPrice.RestoreRate", 8);
 
@@ -828,14 +826,16 @@ public class AmazonAccessor {
                 FEEDS_SERVICE_MAP.put("FR", getFeedsServiceClient("FR", properties));
                 FEEDS_SERVICE_MAP.put("CN", getFeedsServiceClient("CN", properties));
 
+                AmazonAccessMonitor euWeight = new AmazonAccessMonitor(20, GET_WEIGHT_RESTORE_RATE);
+
                 GET_WEIGHT_MONITOR.put("US", new AmazonAccessMonitor(20, GET_WEIGHT_RESTORE_RATE));
                 GET_WEIGHT_MONITOR.put("CA", new AmazonAccessMonitor(20, GET_WEIGHT_RESTORE_RATE));
                 GET_WEIGHT_MONITOR.put("UK", new AmazonAccessMonitor(20, GET_WEIGHT_RESTORE_RATE));
                 GET_WEIGHT_MONITOR.put("JP", new AmazonAccessMonitor(20, GET_WEIGHT_RESTORE_RATE));
-                GET_WEIGHT_MONITOR.put("ES", new AmazonAccessMonitor(20, GET_WEIGHT_RESTORE_RATE));
-                GET_WEIGHT_MONITOR.put("IT", new AmazonAccessMonitor(20, GET_WEIGHT_RESTORE_RATE));
-                GET_WEIGHT_MONITOR.put("DE", new AmazonAccessMonitor(20, GET_WEIGHT_RESTORE_RATE));
-                GET_WEIGHT_MONITOR.put("FR", new AmazonAccessMonitor(20, GET_WEIGHT_RESTORE_RATE));
+                GET_WEIGHT_MONITOR.put("ES", euWeight);
+                GET_WEIGHT_MONITOR.put("IT", euWeight);
+                GET_WEIGHT_MONITOR.put("DE", euWeight);
+                GET_WEIGHT_MONITOR.put("FR", euWeight);
                 GET_WEIGHT_MONITOR.put("CN", new AmazonAccessMonitor(20, GET_WEIGHT_RESTORE_RATE));
 
                 GET_LOWEST_OFFER_MONITOR.put("US", new AmazonAccessMonitor(20, GET_PRICE_RESTORE_RATE));
@@ -868,28 +868,17 @@ public class AmazonAccessor {
     }
 
     public static void main(String[] args) throws Exception {
-        /*
-         * Merchant ID: A26M0U9VMRE4V5 Marketplace ID: ATVPDKIKX0DER
-         */
-        ThreadPoolExecutor executor = new ThreadPoolExecutor(10, 10, 100, TimeUnit.SECONDS,
-                new ArrayBlockingQueue<Runnable>(1000));
-
-        /**
-         * Merchant ID: A2239UYQWWA9KK Marketplace ID: ATVPDKIKX0DER
-         */
-        final AmazonAccessMonitor monitor1 = new AmazonAccessMonitor(20, 10);
-
-        int submitted = 0;
-        long started = System.currentTimeMillis();
-        for (int i = 0; i < 100; i++) {
-            submitted++;
-            executor.submit(new Test(i, monitor1));
-        }
-        while (executor.getCompletedTaskCount() < submitted) {
-            Thread.sleep(100);
-        }
-        System.out.println("Time taken:" + (System.currentTimeMillis() - started));
-        System.out.println("Process completed");
+        AppConfig.initialize("Repricer.properties");
+        AmazonAccessor.initialize();
+        AmazonAccessor accessor = new AmazonAccessor("UK", "A1F83G8C2ARO7P", "A4F79GX8B8ONH");
+        List<String> submissionIds = new ArrayList<String>();
+        submissionIds.add("6205193400");
+        submissionIds.add("6205193160");
+        submissionIds.add("6205191988");
+        submissionIds.add("6205188444");
+        submissionIds.add("6205191076");
+        // submissionIds.add("6202559600");
+        System.out.println(accessor.isSubmissionProcessed(submissionIds));
     }
 
     private static class Test implements Runnable {
@@ -1168,6 +1157,7 @@ public class AmazonAccessor {
         IdList list = new IdList(submissionIds);
         request.setFeedSubmissionIdList(list);
         GetFeedSubmissionListResponse response = feedsService.getFeedSubmissionList(request);
+        System.out.println(response.toJSON());
         if (response.isSetGetFeedSubmissionListResult()) {
             GetFeedSubmissionListResult result = response.getGetFeedSubmissionListResult();
             if (result.isSetFeedSubmissionInfoList()) {
@@ -1193,6 +1183,124 @@ public class AmazonAccessor {
         }
         return false;
     }
+
+    public Map<String, ProductDetail> getMatchingCatalog(List<String> reqId) throws Exception {
+        if (AppConfig.getBoolean("ShouldNotGetWeightFromAmazon", false)) {
+            Map<String, ProductDetail> testMap = new HashMap<String, ProductDetail>();
+            return testMap;
+        }
+        int maxBatchSize = 5;
+        int reqsReqd = reqId.size() / maxBatchSize;
+
+        Map<String, ProductDetail> catalogMap = new HashMap<String, ProductDetail>();
+
+        AmazonAccessMonitor getCatalogMonitor = GET_WEIGHT_MONITOR.get(region);
+
+        for (int req = 0; req <= reqsReqd; req++) {
+
+            List<String> ids = reqId.subList(req * maxBatchSize, (Math.min((req + 1) * maxBatchSize, reqId.size())));
+
+            if (ids.size() == 0) {
+                continue;
+            }
+
+            boolean shouldRetry = true;
+            for (int retry = 0; shouldRetry && retry < MAX_RETRY; retry++) {
+                shouldRetry = false;
+                int tries = 0;
+                int waitTime = 0;
+                while (tries++ < 2 * MAX_TRIES) {
+                    waitTime = getCatalogMonitor.addRequest(ids.size());
+                    if (waitTime == 0) {
+                        break;
+                    } else {
+                        Thread.sleep(waitTime);
+                        log.debug("Waiting to get request quota.");
+                    }
+                }
+                if (waitTime > 0) {
+                    log.warn("A GetProductDetail Request is starving for quota - executing without complying with policy.");
+                }
+
+                GetMatchingProductForIdRequest gmpfid = new GetMatchingProductForIdRequest();
+                gmpfid.setIdType("ASIN");
+
+                IdListType idList = new IdListType();
+                idList.setId(ids);
+                gmpfid.setIdList(idList);
+
+                gmpfid.setMarketplaceId(marketplaceId);
+                gmpfid.setSellerId(sellerId);
+
+                try {
+                    long startTime = System.currentTimeMillis();
+                    GetMatchingProductForIdResponse resp = productService.getMatchingProductForId(gmpfid);
+                    List<GetMatchingProductForIdResult> lst = resp.getGetMatchingProductForIdResult();
+                    for (GetMatchingProductForIdResult r : lst) {
+                        String asin = r.getId();
+                        if (r.isSetProducts()) {
+                            ProductList p1 = r.getProducts();
+                            ProductDetail detail = new ProductDetail();
+                            detail.setProductId(asin);
+                            for (Product p : p1.getProduct()) {
+                                AttributeSetList l = p.getAttributeSets();
+                                for (Object o : l.getAny()) {
+                                    Node n = (Node) o;
+                                    NodeList m = n.getChildNodes();
+                                    for (int i = 0; i < m.getLength(); i++) {
+                                        Node nn = m.item(i);
+                                        if ("ns2:Title".equals(nn.getNodeName())) {
+                                            String title = nn.getTextContent();
+                                            detail.setTitle(title);
+                                        }
+                                        if ("ns2:Author".equals(nn.getNodeName())) {
+                                            String author = nn.getTextContent();
+                                            detail.setAuthor(author);
+                                        }
+                                        if ("ns2:Artist".equals(nn.getNodeName())) {
+                                            String artist = nn.getTextContent();
+                                            detail.setArtist(artist);
+                                        }
+                                    }
+                                }
+                            }
+                            boolean ok = false;
+                            if (detail.getArtist() != null)
+                                ok = true;
+                            if (detail.getTitle() != null)
+                                ok = true;
+                            if (detail.getAuthor() != null)
+                                ok = true;
+                            if (ok) {
+                                catalogMap.put(asin, detail);
+                            }
+                        }
+                    }
+                    if (log.isDebugEnabled()) {
+                        log.debug("Time taken for GetCatalogData call: " + (System.currentTimeMillis() - startTime)
+                                + ", Region=" + region);
+                    }
+                } catch (Exception e) {
+                    if (e.getMessage() != null && e.getMessage().contains("throttled") || e.getMessage() != null
+                            && e.getMessage().contains("Throttled")) {
+                        shouldRetry = true;
+                        log.error("Retrying throttled GetCatalogData request for " + region);
+                        try {
+                            Thread.sleep((int) (1000 * Math.random()));
+                        } catch (Exception e1) {
+                        }
+                        if (retry == MAX_RETRY - 1) {
+                            throw e;
+                        }
+                    } else {
+                        throw e;
+                    }
+                }
+            }
+        }
+        return catalogMap;
+    }
+
 }
 
 /*

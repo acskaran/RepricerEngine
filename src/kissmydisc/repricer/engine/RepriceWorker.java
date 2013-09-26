@@ -423,6 +423,11 @@ public class RepriceWorker implements Runnable {
                             reprice = false;
                             quantity = 0;
                             quantityReset = true;
+                            if ("KMD".equals(region)) {
+                                if (ajpQuantity == 0) {
+                                    price = 22.22F;
+                                }
+                            }
                             auditTrail.append("Applying Quantity Filter - Ajp Q:" + ajpQuantity + ", Not Repricing.");
                             if (log.isDebugEnabled()) {
                                 log.debug("Applying quantity filter for " + item);
@@ -547,6 +552,25 @@ public class RepriceWorker implements Runnable {
                                         auditTrail.append(item.getRegion()
                                                 + " price not available. Skipping second level repricing");
                                     }
+                                }
+                            }
+
+                            if (reprice) {
+                                int upperLimitPrice = -1;
+                                if (item.isNew()) {
+                                    upperLimitPrice = this.config.getFormula().getPriceLimitNew();
+                                } else if (item.isUsed()) {
+                                    upperLimitPrice = this.config.getFormula().getPriceLimitUsed();
+                                } else if (item.isOBI()) {
+                                    upperLimitPrice = this.config.getFormula().getPriceLimitUsedOBI();
+                                }
+                                if (upperLimitPrice > 0 && price > upperLimitPrice) {
+                                    quantity = 0;
+                                    if (region.equals("KMD")) {
+                                        price = 22.22F;
+                                    }
+                                    quantityReset = true;
+                                    auditTrail.append("\nP > " + upperLimitPrice + ", set Q = 0.");
                                 }
                             }
 

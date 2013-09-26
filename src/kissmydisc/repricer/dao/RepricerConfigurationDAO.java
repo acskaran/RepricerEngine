@@ -98,6 +98,9 @@ public class RepricerConfigurationDAO extends DBAccessor {
                 formula.setInitialFormula(rs.getString("RF.FORMULA"));
                 formula.setQuantityLimit(rs.getInt("RF.QUANTITY_LIMIT"));
                 formula.setQuantityLimitNew(rs.getInt("RF.NEW_QUANTITY_LIMIT"));
+                formula.setPriceLimitNew(rs.getInt("RF.PRICE_LIMIT_NEW"));
+                formula.setPriceLimitUsed(rs.getInt("RF.PRICE_LIMIT_USED"));
+                formula.setPriceLimitUsedOBI(rs.getInt("RF.PRICE_LIMIT_USED_OBI"));
                 if (rs.getBoolean("RF.SECOND_LEVEL_REPRICING")) {
                     formula.setSecondLevelRepricing(true);
                     formula.setLowerPriceMarigin(rs.getDouble("RF.LOWER_PRICE_MARIGIN"));

@@ -154,8 +154,8 @@ public class ListingCopier {
                 rowsWritten = 0;
                 pqFileStream = null;
                 pqFiles.add(new Pair<String, String>(pqFeedFile, new String(Base64.encodeBase64(md5), "UTF-8")));
-                submitToAmazon();
             }
+            submitToAmazon();
         }
     }
 
@@ -176,7 +176,7 @@ public class ListingCopier {
                 log.error("Error checking submission", e);
             }
             log.info("Waiting for " + submissionIds + " to complete.");
-            Thread.sleep(10000);
+            Thread.sleep(45000);
         } while (completed == false);
         for (Pair<String, String> pq : pqFiles) {
             int retry = 0;
